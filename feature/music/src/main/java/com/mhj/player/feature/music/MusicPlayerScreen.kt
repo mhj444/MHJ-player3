@@ -17,14 +17,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -42,8 +40,10 @@ import androidx.compose.ui.unit.sp
 import com.mhj.player.core.model.PlayerUiState
 import com.mhj.player.core.ui.R
 import com.mhj.player.core.ui.components.BrandLogoHeader
+import com.mhj.player.core.ui.components.EmbossCircle
 import com.mhj.player.core.ui.components.EqualizerVisualizer
 import com.mhj.player.core.ui.components.softEmboss
+import com.mhj.player.core.ui.components.softGoldHalo
 import com.mhj.player.core.ui.theme.MhjColors
 import com.mhj.player.core.ui.theme.MhjTheme
 import kotlin.math.roundToLong
@@ -71,40 +71,40 @@ fun MusicPlayerScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = 22.dp),
+            .padding(horizontal = if (dark) 20.dp else 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Spacer(Modifier.height(2.dp))
-        // Official pack header icons (EQ / cast) flanking brand logo — no reconstructed strip orbs
+        Spacer(Modifier.height(4.dp))
+
+        // Header: gold-rim orb wells + official icons flanking brand logo (board)
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            HeaderChrome(onClick = onOpenTopMenu, dark = dark, left = true)
+            HeaderOrb(
+                onClick = onOpenTopMenu,
+                dark = dark,
+                iconRes = if (dark) R.drawable.icon_mid_equalizer else R.drawable.icon_porc_equalizer,
+            )
             BrandLogoHeader(modifier = Modifier.weight(1f))
-            HeaderChrome(onClick = { }, dark = dark, left = false)
+            HeaderOrb(
+                onClick = { },
+                dark = dark,
+                iconRes = if (dark) R.drawable.icon_mid_cast else R.drawable.icon_porc_cast,
+            )
         }
 
-        Spacer(Modifier.height(if (dark) 4.dp else 10.dp))
+        Spacer(Modifier.height(if (dark) 8.dp else 14.dp))
 
-        // Album + thin multi-line gold-glass frame (no chunky outer halo)
+        // Album: board-cropped multi-line gold frame + soft gold halo
         Box(
             modifier = Modifier
-                .fillMaxWidth(if (dark) 0.90f else 0.86f)
+                .fillMaxWidth(if (dark) 0.88f else 0.84f)
                 .aspectRatio(1f)
-                .then(
-                    if (!dark) {
-                        Modifier.drawBehind {
-                            drawRoundRect(
-                                brush = Brush.radialGradient(
-                                    listOf(Color(0x22C4A46A), Color.Transparent),
-                                ),
-                                cornerRadius = androidx.compose.ui.geometry.CornerRadius(48.dp.toPx()),
-                            )
-                        }
-                    } else {
-                        Modifier // Midnight: frame bitmap carries thin gold lines; no radial glow tile
-                    },
+                .softGoldHalo(
+                    radius = if (dark) 28.dp else 36.dp,
+                    bloom = if (dark) 22.dp else 18.dp,
+                    intensity = if (dark) 0.48f else 0.38f,
                 ),
             contentAlignment = Alignment.Center,
         ) {
@@ -112,8 +112,8 @@ fun MusicPlayerScreen(
                 painter = painterResource(R.drawable.demo_album_art),
                 contentDescription = null,
                 modifier = Modifier
-                    .fillMaxSize(if (dark) 0.88f else 0.84f)
-                    .clip(RoundedCornerShape(if (dark) 22.dp else 30.dp)),
+                    .fillMaxSize(if (dark) 0.86f else 0.82f)
+                    .clip(RoundedCornerShape(if (dark) 26.dp else 34.dp)),
                 contentScale = ContentScale.Crop,
             )
             Image(
@@ -126,12 +126,12 @@ fun MusicPlayerScreen(
             )
         }
 
-        Spacer(Modifier.height(if (dark) 10.dp else 14.dp))
+        Spacer(Modifier.height(if (dark) 14.dp else 16.dp))
 
         Text(
             text = title,
-            color = if (dark) Color(0xFFF5F0E6) else c.onBackground,
-            fontSize = if (dark) 20.sp else 22.sp,
+            color = if (dark) Color(0xFFF7F2E8) else c.onBackground,
+            fontSize = if (dark) 22.sp else 22.sp,
             fontFamily = FontFamily.Serif,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
@@ -139,26 +139,27 @@ fun MusicPlayerScreen(
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth(),
         )
-        Spacer(Modifier.height(2.dp))
+        Spacer(Modifier.height(4.dp))
         Text(
             text = artist,
-            color = if (dark) MhjColors.Gold.copy(alpha = 0.92f) else c.muted,
-            fontSize = 13.sp,
+            color = if (dark) MhjColors.Gold.copy(alpha = 0.95f) else c.muted,
+            fontSize = 14.sp,
+            fontFamily = FontFamily.Serif,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
 
-        Spacer(Modifier.height(if (dark) 6.dp else 8.dp))
+        Spacer(Modifier.height(if (dark) 10.dp else 12.dp))
         EqualizerVisualizer(
             active = state.isPlaying,
-            modifier = Modifier.fillMaxWidth(0.94f),
+            modifier = Modifier.fillMaxWidth(0.92f),
         )
 
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(6.dp))
         GoldSeekBar(
             progress = if (duration > 0) position.toFloat() / duration else 0f,
             onSeekFraction = { frac -> if (duration > 0) onSeek((frac * duration).roundToLong()) },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp),
         )
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 2.dp),
@@ -168,7 +169,7 @@ fun MusicPlayerScreen(
             Text(formatTime(duration), color = c.muted, fontSize = 11.sp)
         }
 
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(if (dark) 10.dp else 12.dp))
 
         if (dark) {
             MidnightTransport(
@@ -200,25 +201,42 @@ fun MusicPlayerScreen(
     }
 }
 
+/** Board header: gold-rim glass orb well + official pack glyph. */
 @Composable
-private fun HeaderChrome(onClick: () -> Unit, dark: Boolean, left: Boolean) {
-    val res = when {
-        dark && left -> R.drawable.icon_mid_equalizer
-        dark && !left -> R.drawable.icon_mid_cast
-        !dark && left -> R.drawable.icon_porc_equalizer
-        else -> R.drawable.icon_porc_cast
+private fun HeaderOrb(onClick: () -> Unit, dark: Boolean, iconRes: Int) {
+    if (dark) {
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clickable(onClick = onClick),
+            contentAlignment = Alignment.Center,
+        ) {
+            Image(
+                painter = painterResource(R.drawable.chrome_mid_orb_well),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit,
+            )
+            Image(
+                painter = painterResource(iconRes),
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                contentScale = ContentScale.Fit,
+            )
+        }
+    } else {
+        EmbossCircle(onClick = onClick, diameter = 48.dp, ringGold = true) {
+            Image(
+                painter = painterResource(iconRes),
+                contentDescription = null,
+                modifier = Modifier.size(22.dp),
+                contentScale = ContentScale.Fit,
+            )
+        }
     }
-    Image(
-        painter = painterResource(res),
-        contentDescription = null,
-        modifier = Modifier
-            .size(if (dark) 36.dp else 40.dp)
-            .clickable(onClick = onClick),
-        contentScale = ContentScale.Fit,
-    )
 }
 
-/** Midnight transport: official MHJ icon pack bitmaps (PNG-512). */
+/** Midnight transport: official glyphs; center = feedback gold-glass ring + pack play/pause. */
 @Composable
 private fun MidnightTransport(
     state: PlayerUiState,
@@ -233,20 +251,28 @@ private fun MidnightTransport(
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        MidGlyph(R.drawable.icon_mid_shuffle, onShuffle, 44.dp)
-        MidGlyph(R.drawable.icon_mid_prev, onPrevious, 48.dp)
-        Image(
-            painter = painterResource(
-                if (state.isPlaying) R.drawable.icon_mid_pause else R.drawable.icon_mid_play,
-            ),
-            contentDescription = "Play pause",
+        MidGlyph(R.drawable.icon_mid_shuffle, onShuffle, 42.dp)
+        MidGlyph(R.drawable.icon_mid_prev, onPrevious, 46.dp)
+        // Board gold-glass center: soft halo + dual gold rim orb + official play/pause glyph
+        Box(
             modifier = Modifier
-                .size(72.dp)
-                .clickable(onClick = onPlayPause),
-            contentScale = ContentScale.Fit,
-        )
-        MidGlyph(R.drawable.icon_mid_next, onNext, 48.dp)
-        MidGlyph(R.drawable.icon_mid_repeat, onRepeat, 44.dp)
+                .size(86.dp)
+                .softGoldHalo(43.dp, bloom = 18.dp, intensity = 0.5f),
+            contentAlignment = Alignment.Center,
+        ) {
+            EmbossCircle(onClick = onPlayPause, diameter = 78.dp, ringGold = true) {
+                Image(
+                    painter = painterResource(
+                        if (state.isPlaying) R.drawable.icon_mid_pause else R.drawable.icon_mid_play,
+                    ),
+                    contentDescription = "Play pause",
+                    modifier = Modifier.size(32.dp),
+                    contentScale = ContentScale.Fit,
+                )
+            }
+        }
+        MidGlyph(R.drawable.icon_mid_next, onNext, 46.dp)
+        MidGlyph(R.drawable.icon_mid_repeat, onRepeat, 42.dp)
     }
 }
 
@@ -257,12 +283,13 @@ private fun MidGlyph(res: Int, onClick: () -> Unit, size: Dp) {
         contentDescription = null,
         modifier = Modifier
             .size(size)
+            .softGoldHalo(size / 2, bloom = 8.dp, intensity = 0.28f)
             .clickable(onClick = onClick),
         contentScale = ContentScale.Fit,
     )
 }
 
-/** Porcelain: cream embossed circle bitmaps; play is same family (not solid gold). */
+/** Porcelain: cream embossed orbs + official pack glyphs; center gold-glass ring. */
 @Composable
 private fun PorcelainTransport(
     state: PlayerUiState,
@@ -279,16 +306,16 @@ private fun PorcelainTransport(
     ) {
         PorcelainOrb(R.drawable.icon_porc_shuffle, onShuffle, 48.dp)
         PorcelainOrb(R.drawable.icon_porc_prev, onPrevious, 52.dp)
-        Image(
-            painter = painterResource(
-                if (state.isPlaying) R.drawable.icon_porc_pause else R.drawable.icon_porc_play,
-            ),
-            contentDescription = "Play pause",
-            modifier = Modifier
-                .size(64.dp)
-                .clickable(onClick = onPlayPause),
-            contentScale = ContentScale.Fit,
-        )
+        EmbossCircle(onClick = onPlayPause, diameter = 72.dp, ringGold = true) {
+            Image(
+                painter = painterResource(
+                    if (state.isPlaying) R.drawable.icon_porc_pause else R.drawable.icon_porc_play,
+                ),
+                contentDescription = "Play pause",
+                modifier = Modifier.size(30.dp),
+                contentScale = ContentScale.Fit,
+            )
+        }
         PorcelainOrb(R.drawable.icon_porc_next, onNext, 52.dp)
         PorcelainOrb(R.drawable.icon_porc_repeat, onRepeat, 48.dp)
     }
@@ -296,26 +323,24 @@ private fun PorcelainTransport(
 
 @Composable
 private fun PorcelainOrb(res: Int, onClick: () -> Unit, size: Dp) {
-    Image(
-        painter = painterResource(res),
-        contentDescription = null,
-        modifier = Modifier
-            .size(size)
-            .clickable(onClick = onClick),
-        contentScale = ContentScale.Fit,
-    )
+    EmbossCircle(onClick = onClick, diameter = size, ringGold = true) {
+        Image(
+            painter = painterResource(res),
+            contentDescription = null,
+            modifier = Modifier.size(size * 0.46f),
+            contentScale = ContentScale.Fit,
+        )
+    }
 }
 
 @Composable
 private fun BottomNav(dark: Boolean, onHome: () -> Unit, onLibrary: () -> Unit) {
     val c = MhjTheme.colors
     if (dark) {
-        // Board-cropped / board-lit glow glyphs — bitmap chrome, not Material vectors
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 8.dp)
-                .padding(vertical = 6.dp),
+                .padding(bottom = 10.dp, top = 4.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -323,73 +348,73 @@ private fun BottomNav(dark: Boolean, onHome: () -> Unit, onLibrary: () -> Unit) 
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
                     .clickable(onClick = onHome)
-                    .padding(horizontal = 20.dp, vertical = 6.dp),
+                    .padding(horizontal = 24.dp, vertical = 8.dp),
             ) {
                 Image(
                     painter = painterResource(R.drawable.icon_mid_home_active),
                     contentDescription = "Home",
-                    modifier = Modifier.size(36.dp),
+                    modifier = Modifier.size(34.dp),
                     contentScale = ContentScale.Fit,
                 )
+                Spacer(Modifier.height(4.dp))
                 Text("Home", color = MhjColors.GoldHi, fontSize = 11.sp, fontFamily = FontFamily.Serif)
             }
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
                     .clickable(onClick = onLibrary)
-                    .padding(horizontal = 20.dp, vertical = 6.dp),
+                    .padding(horizontal = 24.dp, vertical = 8.dp),
             ) {
                 Image(
                     painter = painterResource(R.drawable.icon_mid_library),
                     contentDescription = "Library",
-                    modifier = Modifier.size(36.dp),
+                    modifier = Modifier.size(34.dp),
                     contentScale = ContentScale.Fit,
                 )
+                Spacer(Modifier.height(4.dp))
                 Text("Library", color = MhjColors.Gold.copy(alpha = 0.85f), fontSize = 11.sp, fontFamily = FontFamily.Serif)
             }
         }
     } else {
-        // Frosted porcelain nav — bitmap home/library marks from boards/feedback
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 12.dp)
+                .padding(bottom = 14.dp)
                 .softEmboss(28.dp, c.lightShadow, c.darkShadow, 10.dp)
                 .clip(RoundedCornerShape(28.dp))
                 .background(
                     Brush.verticalGradient(
-                        listOf(
-                            Color(0xE8F7F0E6),
-                            Color(0xCCEFE4D4),
-                        ),
+                        listOf(Color(0xE8F7F0E6), Color(0xCCEFE4D4)),
                     ),
                 ),
         ) {
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 8.dp, horizontal = 12.dp),
+                    .padding(vertical = 10.dp, horizontal = 12.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.clickable(onClick = onHome),
+                ) {
                     Image(
                         painter = painterResource(R.drawable.icon_porc_home_active),
                         contentDescription = "Home",
-                        modifier = Modifier
-                            .size(34.dp)
-                            .clickable(onClick = onHome),
+                        modifier = Modifier.size(34.dp),
                         contentScale = ContentScale.Fit,
                     )
                     Text("Home", color = c.primary, fontSize = 11.sp, fontFamily = FontFamily.Serif)
                 }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.clickable(onClick = onLibrary),
+                ) {
                     Image(
                         painter = painterResource(R.drawable.icon_porc_library),
                         contentDescription = "Library",
-                        modifier = Modifier
-                            .size(34.dp)
-                            .clickable(onClick = onLibrary),
+                        modifier = Modifier.size(34.dp),
                         contentScale = ContentScale.Fit,
                     )
                     Text("Library", color = c.muted, fontSize = 11.sp, fontFamily = FontFamily.Serif)
@@ -399,7 +424,6 @@ private fun BottomNav(dark: Boolean, onHome: () -> Unit, onLibrary: () -> Unit) 
     }
 }
 
-/** Board-style thin gold seek with glowing circular thumb (not Material bulk). */
 @Composable
 private fun GoldSeekBar(
     progress: Float,
@@ -409,7 +433,7 @@ private fun GoldSeekBar(
     val p = progress.coerceIn(0f, 1f)
     BoxWithConstraints(
         modifier = modifier
-            .height(28.dp)
+            .height(26.dp)
             .pointerInput(Unit) {
                 detectHorizontalDragGestures(
                     onDragStart = { offset ->
@@ -425,7 +449,7 @@ private fun GoldSeekBar(
     ) {
         Canvas(Modifier.fillMaxSize()) {
             val y = size.height / 2f
-            val stroke = 2.2.dp.toPx()
+            val stroke = 2.0.dp.toPx()
             drawLine(
                 color = MhjColors.Gold.copy(alpha = 0.28f),
                 start = Offset(0f, y),
@@ -442,13 +466,13 @@ private fun GoldSeekBar(
                 cap = StrokeCap.Round,
             )
             drawCircle(
-                color = MhjColors.GoldGlow.copy(alpha = 0.55f),
-                radius = 12.dp.toPx(),
+                color = MhjColors.GoldGlow.copy(alpha = 0.5f),
+                radius = 11.dp.toPx(),
                 center = Offset(x, y),
             )
             drawCircle(
                 brush = Brush.radialGradient(listOf(MhjColors.GoldHi, MhjColors.Gold)),
-                radius = 6.dp.toPx(),
+                radius = 5.5.dp.toPx(),
                 center = Offset(x, y),
             )
         }

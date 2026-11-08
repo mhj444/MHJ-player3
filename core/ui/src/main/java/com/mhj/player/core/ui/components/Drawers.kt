@@ -126,23 +126,40 @@ fun BottomAudioDrawer(
         hazeState = hazeState,
     ) {
         if (!showDials) {
-            Text(
-                "Audio Processing",
-                color = MhjTheme.colors.primary,
-                fontFamily = FontFamily.Serif,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 20.sp,
-            )
-            Spacer(Modifier.height(14.dp))
-            ToggleRow(
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Audio Processing",
+                    color = MhjTheme.colors.primary,
+                    fontFamily = FontFamily.Serif,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 20.sp,
+                )
+                Image(
+                    painter = painterResource(
+                        if (dark) R.drawable.icon_mid_equalizer else R.drawable.icon_porc_equalizer,
+                    ),
+                    contentDescription = null,
+                    modifier = Modifier.size(22.dp),
+                    contentScale = ContentScale.Fit,
+                )
+            }
+            Spacer(Modifier.height(16.dp))
+            GlassToggleCard(
                 iconRes = if (dark) R.drawable.icon_mid_dialogue else R.drawable.icon_porc_dialogue,
                 label = "Dialogue Clarity Boost",
+                arabic = "وضوح وضوح الحوار",
                 checked = settings.dialogueClarity,
                 onChange = onDialogueClarity,
             )
-            ToggleRow(
+            Spacer(Modifier.height(10.dp))
+            GlassToggleCard(
                 iconRes = if (dark) R.drawable.icon_mid_night else R.drawable.icon_porc_night,
                 label = "Night Mode Audio",
+                arabic = "وضع الصوت الليلي",
                 checked = settings.nightModeAudio,
                 onChange = onNightMode,
             )
@@ -392,14 +409,15 @@ private fun OverlaySheet(
         bottomStart = if (fromTop) 32.dp else 0.dp,
         bottomEnd = if (fromTop) 32.dp else 0.dp,
     )
+    // Board frost: light haze glass — avoid muddy opaque stack
     val frostStyle = HazeStyle(
-        backgroundColor = Color(0xE6101014),
+        backgroundColor = Color(0x99101014),
         tints = listOf(
-            HazeTint(Color(0xCC14141A)),
-            HazeTint(MhjColors.Gold.copy(alpha = 0.04f)),
+            HazeTint(Color(0x6614141A)),
+            HazeTint(MhjColors.Gold.copy(alpha = 0.03f)),
         ),
-        blurRadius = 18.dp,
-        noiseFactor = 0.08f,
+        blurRadius = 22.dp,
+        noiseFactor = 0.06f,
     )
     AnimatedVisibility(
         visible = visible,
@@ -426,7 +444,7 @@ private fun OverlaySheet(
                             Modifier.background(Color(0xF214141A))
                         },
                     )
-                    .background(Color(0x99101014))
+                    .background(Color(0x55101014))
                     .softGoldHairline(32.dp)
                     .padding(horizontal = 20.dp, vertical = 18.dp),
                 content = body,
@@ -435,7 +453,63 @@ private fun OverlaySheet(
     }
 }
 
-/** Audio 2x2 tile: thin gold border + official pack bitmap (no Canvas/Material substitutes). */
+/** Board glass toggle row — frosted card + official icon + bilingual labels. */
+@Composable
+private fun GlassToggleCard(
+    iconRes: Int,
+    label: String,
+    arabic: String,
+    checked: Boolean,
+    onChange: (Boolean) -> Unit,
+) {
+    val c = MhjTheme.colors
+    val dark = c.isDark
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .softEmboss(18.dp, c.lightShadow, c.darkShadow, 10.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        if (dark) Color(0xAA1C1C22) else Color(0xEEF7F0E6),
+                        if (dark) Color(0x99141418) else Color(0xDDEFE4D4),
+                    ),
+                ),
+            )
+            .softGoldHairline(18.dp)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Image(
+            painter = painterResource(iconRes),
+            contentDescription = null,
+            modifier = Modifier.size(26.dp),
+            contentScale = ContentScale.Fit,
+        )
+        Column(Modifier.weight(1f)) {
+            Text(label, color = c.onBackground, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+            Text(arabic, color = c.primary.copy(alpha = 0.85f), fontSize = 12.sp)
+        }
+        Image(
+            painter = painterResource(
+                if (checked) {
+                    if (dark) R.drawable.icon_mid_switch_on else R.drawable.icon_porc_switch_on
+                } else {
+                    if (dark) R.drawable.icon_mid_switch_off else R.drawable.icon_porc_switch_off
+                },
+            ),
+            contentDescription = if (checked) "On" else "Off",
+            modifier = Modifier
+                .size(width = 52.dp, height = 32.dp)
+                .clickable { onChange(!checked) },
+            contentScale = ContentScale.Fit,
+        )
+    }
+}
+
+/** Audio 2x2 glass tile: embossed card + official pack bitmap. */
 @Composable
 private fun OfficialGridTile(
     modifier: Modifier,
@@ -447,23 +521,31 @@ private fun OfficialGridTile(
     val c = MhjTheme.colors
     Column(
         modifier = modifier
-            .height(112.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(Color(0x33101014))
-            .softGoldHairline(16.dp)
+            .height(118.dp)
+            .softEmboss(18.dp, c.lightShadow, c.darkShadow, 10.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        if (c.isDark) Color(0xAA1C1C22) else Color(0xEEF7F0E6),
+                        if (c.isDark) Color(0x99141418) else Color(0xDDEFE4D4),
+                    ),
+                ),
+            )
+            .softGoldHairline(18.dp)
             .clickable(onClick = onClick)
-            .padding(vertical = 12.dp, horizontal = 8.dp),
+            .padding(vertical = 14.dp, horizontal = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Image(
             painter = painterResource(iconRes),
             contentDescription = label,
-            modifier = Modifier.size(30.dp),
+            modifier = Modifier.size(32.dp),
             contentScale = ContentScale.Fit,
         )
-        Text(label, color = c.primary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-        Text(value, color = c.muted, fontSize = 11.sp)
+        Text(label, color = c.onBackground, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+        Text(value, color = c.primary.copy(alpha = 0.9f), fontSize = 11.sp)
     }
 }
 
@@ -499,44 +581,6 @@ private fun MenuCard(iconRes: Int, title: String, subtitle: String, onClick: () 
             Text(title, color = c.onBackground, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
             Text(subtitle, color = c.muted, fontSize = 12.sp)
         }
-    }
-}
-
-@Composable
-private fun ToggleRow(iconRes: Int, label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-    val dark = MhjTheme.colors.isDark
-    Row(
-        Modifier.fillMaxWidth().padding(vertical = 7.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            modifier = Modifier.weight(1f),
-        ) {
-            Image(
-                painter = painterResource(iconRes),
-                contentDescription = null,
-                modifier = Modifier.size(22.dp),
-                contentScale = ContentScale.Fit,
-            )
-            Text(label, color = MhjTheme.colors.onBackground, fontSize = 14.sp)
-        }
-        Image(
-            painter = painterResource(
-                if (checked) {
-                    if (dark) R.drawable.icon_mid_switch_on else R.drawable.icon_porc_switch_on
-                } else {
-                    if (dark) R.drawable.icon_mid_switch_off else R.drawable.icon_porc_switch_off
-                },
-            ),
-            contentDescription = if (checked) "On" else "Off",
-            modifier = Modifier
-                .size(width = 52.dp, height = 32.dp)
-                .clickable { onChange(!checked) },
-            contentScale = ContentScale.Fit,
-        )
     }
 }
 
