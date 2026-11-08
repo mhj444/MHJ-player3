@@ -2,6 +2,7 @@ package com.mhj.player.core.playback.service
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.util.Log
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.Player
@@ -16,6 +17,7 @@ import com.mhj.player.core.model.MediaKind
 import com.mhj.player.core.model.RepeatMode
 import com.mhj.player.core.playback.engine.PlayerHolder
 import com.mhj.player.core.playback.engine.toMediaItem
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -24,6 +26,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Foreground media playback service with MediaSession (lock-screen / notification controls).
@@ -31,7 +34,11 @@ import kotlinx.coroutines.launch
  */
 @UnstableApi
 class MhjPlaybackService : MediaSessionService() {
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val exceptionHandler = CoroutineExceptionHandler { _, throwable ->
+        Log.e(TAG, "Playback service coroutine failed", throwable)
+    }
+    private val serviceScope =
+        CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate + exceptionHandler)
     private var player: ExoPlayer? = null
     private var mediaSession: MediaSession? = null
     private var persistJob: Job? = null
@@ -59,48 +66,50 @@ class MhjPlaybackService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
-        val db = MhjDatabase.get(this)
-        persistence = PlaybackPersistenceRepository(db.queueDao(), db.playbackStateDao())
+        runCatching {
+            val db = MhjDatabase.get(this)
+            persistence = PlaybackPersistenceRepository(db.queueDao(), db.playbackStateDao())
 
-        val exo = PlayerHolder.getOrCreatePlayer(this).also { player = it }
-        exo.setAudioAttributes(
-            AudioAttributes.Builder()
-                .setUsage(C.USAGE_MEDIA)
-                .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
-                .build(),
-            true,
-        )
-        exo.addListener(persistListener)
-
-        val sessionActivity = packageManager.getLaunchIntentForPackage(packageName)?.let { intent ->
-            intent.flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            PendingIntent.getActivity(
-                this,
-                0,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            val exo = PlayerHolder.getOrCreatePlayer(this).also { player = it }
+            exo.setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(C.USAGE_MEDIA)
+                    .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                    .build(),
+                true,
             )
-        }
+            exo.addListener(persistListener)
 
-        mediaSession = PlayerHolder.getOrCreateSession(this, exo).also { session ->
-            sessionActivity?.let { session.setSessionActivity(it) }
-        }
+            val sessionActivity = packageManager.getLaunchIntentForPackage(packageName)?.let { intent ->
+                intent.flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                PendingIntent.getActivity(
+                    this,
+                    0,
+                    intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                )
+            }
 
-        serviceScope.launch {
-            restoreIfNeeded(exo)
+            mediaSession = PlayerHolder.getOrCreateSession(this, exo).also { session ->
+                sessionActivity?.let { session.setSessionActivity(it) }
+            }
+
+            serviceScope.launch {
+                restoreIfNeeded(exo)
+            }
+            startPersistLoop()
+        }.onFailure { error ->
+            Log.e(TAG, "Failed to start playback service", error)
         }
-        startPersistLoop()
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? =
         mediaSession
 
     override fun onDestroy() {
-        persistNow()
+        runCatching { persistNow() }
         persistJob?.cancel()
         player?.removeListener(persistListener)
-        // Do not release PlayerHolder here if we want quick resume across service restarts;
-        // MediaSessionService lifecycle will recreate. Release only when process dies.
         mediaSession?.release()
         mediaSession = null
         player?.release()
@@ -128,54 +137,81 @@ class MhjPlaybackService : MediaSessionService() {
         }
     }
 
+    /**
+     * Snapshot ExoPlayer on the application (main) thread, then write Room on IO.
+     * Accessing the player off-main previously crashed the process on first persist.
+     */
     private fun persistNow() {
         val p = player ?: return
-        serviceScope.launch(Dispatchers.IO) {
-            val queue = buildList {
-                for (i in 0 until p.mediaItemCount) {
-                    val item = p.getMediaItemAt(i)
-                    val meta = item.mediaMetadata
-                    add(
-                        MediaItemModel(
-                            id = item.mediaId,
-                            uri = item.localConfiguration?.uri?.toString().orEmpty(),
-                            title = meta.title?.toString() ?: "Unknown",
-                            artist = meta.artist?.toString() ?: "Unknown artist",
-                            album = meta.albumTitle?.toString().orEmpty(),
-                            durationMs = 0L,
-                            artworkUri = meta.artworkUri?.toString(),
-                            kind = MediaKind.MUSIC,
-                        ),
+        if (!::persistence.isInitialized) return
+        serviceScope.launch {
+            val snapshot = runCatching { captureSnapshot(p) }.getOrElse { error ->
+                Log.e(TAG, "Failed to snapshot player state", error)
+                return@launch
+            }
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    persistence.saveQueue(snapshot.queue)
+                    persistence.savePlaybackState(
+                        item = snapshot.current,
+                        positionMs = snapshot.positionMs,
+                        durationMs = snapshot.durationMs,
+                        wasPlaying = snapshot.wasPlaying,
+                        shuffle = snapshot.shuffle,
+                        repeatMode = snapshot.repeatMode,
                     )
+                }.onFailure { error ->
+                    Log.e(TAG, "Failed to persist playback state", error)
                 }
             }
-            persistence.saveQueue(queue)
-            val current = p.currentMediaItem?.let { item ->
+        }
+    }
+
+    private fun captureSnapshot(p: ExoPlayer): PlaybackSnapshot {
+        val queue = buildList {
+            for (i in 0 until p.mediaItemCount) {
+                val item = p.getMediaItemAt(i)
                 val meta = item.mediaMetadata
-                MediaItemModel(
-                    id = item.mediaId,
-                    uri = item.localConfiguration?.uri?.toString().orEmpty(),
-                    title = meta.title?.toString() ?: "Unknown",
-                    artist = meta.artist?.toString() ?: "Unknown artist",
-                    album = meta.albumTitle?.toString().orEmpty(),
-                    durationMs = p.duration.coerceAtLeast(0L),
-                    artworkUri = meta.artworkUri?.toString(),
-                    kind = MediaKind.MUSIC,
+                add(
+                    MediaItemModel(
+                        id = item.mediaId,
+                        uri = item.localConfiguration?.uri?.toString().orEmpty(),
+                        title = meta.title?.toString() ?: "Unknown",
+                        artist = meta.artist?.toString() ?: "Unknown artist",
+                        album = meta.albumTitle?.toString().orEmpty(),
+                        durationMs = 0L,
+                        artworkUri = meta.artworkUri?.toString(),
+                        kind = MediaKind.MUSIC,
+                    ),
                 )
             }
-            persistence.savePlaybackState(
-                item = current,
-                positionMs = p.currentPosition,
+        }
+        val current = p.currentMediaItem?.let { item ->
+            val meta = item.mediaMetadata
+            MediaItemModel(
+                id = item.mediaId,
+                uri = item.localConfiguration?.uri?.toString().orEmpty(),
+                title = meta.title?.toString() ?: "Unknown",
+                artist = meta.artist?.toString() ?: "Unknown artist",
+                album = meta.albumTitle?.toString().orEmpty(),
                 durationMs = p.duration.coerceAtLeast(0L),
-                wasPlaying = p.isPlaying || p.playWhenReady,
-                shuffle = p.shuffleModeEnabled,
-                repeatMode = when (p.repeatMode) {
-                    Player.REPEAT_MODE_ONE -> RepeatMode.ONE
-                    Player.REPEAT_MODE_ALL -> RepeatMode.ALL
-                    else -> RepeatMode.OFF
-                },
+                artworkUri = meta.artworkUri?.toString(),
+                kind = MediaKind.MUSIC,
             )
         }
+        return PlaybackSnapshot(
+            queue = queue,
+            current = current,
+            positionMs = p.currentPosition,
+            durationMs = p.duration.coerceAtLeast(0L),
+            wasPlaying = p.isPlaying || p.playWhenReady,
+            shuffle = p.shuffleModeEnabled,
+            repeatMode = when (p.repeatMode) {
+                Player.REPEAT_MODE_ONE -> RepeatMode.ONE
+                Player.REPEAT_MODE_ALL -> RepeatMode.ALL
+                else -> RepeatMode.OFF
+            },
+        )
     }
 
     private suspend fun restoreIfNeeded(exo: ExoPlayer) {
@@ -183,8 +219,9 @@ class MhjPlaybackService : MediaSessionService() {
             restored = true
             return
         }
-        val queue = persistence.loadQueue()
-        val state = persistence.loadState()
+        val (queue, state) = withContext(Dispatchers.IO) {
+            persistence.loadQueue() to persistence.loadState()
+        }
         if (queue.isEmpty()) {
             restored = true
             return
@@ -206,5 +243,19 @@ class MhjPlaybackService : MediaSessionService() {
         // Crash-safe: restore position but do not auto-play after unexpected death.
         exo.playWhenReady = false
         restored = true
+    }
+
+    private data class PlaybackSnapshot(
+        val queue: List<MediaItemModel>,
+        val current: MediaItemModel?,
+        val positionMs: Long,
+        val durationMs: Long,
+        val wasPlaying: Boolean,
+        val shuffle: Boolean,
+        val repeatMode: RepeatMode,
+    )
+
+    companion object {
+        private const val TAG = "MhjPlaybackService"
     }
 }

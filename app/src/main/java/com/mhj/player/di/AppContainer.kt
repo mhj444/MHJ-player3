@@ -25,10 +25,16 @@ class AppContainer(context: Context) {
     val playbackController = PlaybackController(appContext, scope)
 
     fun bootstrap() {
-        playbackController.connect()
-        scope.launch(Dispatchers.IO) {
-            ensureDemoCatalog()
-            ensureDefaultPlaylist()
+        // Defer MediaController bind slightly so Application/Activity startup can't race
+        // a failing service connection into a hard crash on first paint.
+        scope.launch {
+            runCatching { playbackController.connect() }
+            launch(Dispatchers.IO) {
+                runCatching {
+                    ensureDemoCatalog()
+                    ensureDefaultPlaylist()
+                }
+            }
         }
     }
 

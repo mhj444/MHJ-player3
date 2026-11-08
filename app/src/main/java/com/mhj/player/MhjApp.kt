@@ -13,8 +13,8 @@ class MhjApp : Application() {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
-        ensureNotificationChannel()
-        container.bootstrap()
+        runCatching { ensureNotificationChannel() }
+        runCatching { container.bootstrap() }
     }
 
     private fun ensureNotificationChannel() {
