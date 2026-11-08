@@ -47,6 +47,15 @@ class LibraryRepository(
         )
     }
 
+    suspend fun getPlaylistMedia(playlistId: Long): List<MediaItemModel> =
+        playlistDao.getMediaInPlaylist(playlistId).map { it.toModel() }
+
+    fun observePlaylistMedia(playlistId: Long): Flow<List<MediaItemModel>> =
+        playlistDao.observeMediaInPlaylist(playlistId).map { list -> list.map { it.toModel() } }
+
+    fun observePlaylistTrackCount(playlistId: Long): Flow<Int> =
+        playlistDao.observeEntryCount(playlistId)
+
     suspend fun seedDemoCatalog(demoItems: List<MediaItemModel>) {
         mediaItemDao.upsertAll(demoItems.map { it.toEntity() })
     }

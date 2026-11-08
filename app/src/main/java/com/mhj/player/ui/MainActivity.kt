@@ -88,6 +88,7 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
     val playerState by viewModel.playerState.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val library by viewModel.libraryItems.collectAsStateWithLifecycle()
+    val playlists by viewModel.playlists.collectAsStateWithLifecycle()
     val pagerState = rememberPagerState(pageCount = { 2 })
     var topOpen by remember { mutableStateOf(false) }
     var bottomOpen by remember { mutableStateOf(false) }
@@ -147,8 +148,11 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
         TopMenuDrawer(
             visible = topOpen,
             settings = settings,
+            playlists = playlists,
             onDismiss = { topOpen = false },
             onToggleTheme = viewModel::toggleTheme,
+            onCreatePlaylist = viewModel::createPlaylist,
+            onPlayPlaylist = viewModel::playPlaylist,
             hazeState = hazeState,
         )
         BottomAudioDrawer(
@@ -158,8 +162,11 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
             onDialogueClarity = viewModel::setDialogueClarity,
             onNightMode = viewModel::setNightMode,
             onSpeedClick = viewModel::bumpSpeed,
+            onSpeedChange = viewModel::setPlaybackSpeed,
+            onSpeedNudge = viewModel::nudgeSpeed,
             onEqClick = { /* DSP Phase 3 hook */ },
             onTimerClick = viewModel::cycleSleepTimer,
+            onTimerChange = viewModel::setSleepTimerMinutes,
             hazeState = hazeState,
         )
         }

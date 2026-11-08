@@ -10,6 +10,7 @@ import com.mhj.player.core.model.AppTheme
 import com.mhj.player.core.model.MediaItemModel
 import com.mhj.player.core.model.MediaKind
 import com.mhj.player.core.model.PlayerUiState
+import com.mhj.player.core.model.PlaylistModel
 import com.mhj.player.core.playback.engine.AudioEffectsController
 import com.mhj.player.core.playback.engine.PlaybackController
 import com.mhj.player.di.AppContainer
@@ -34,6 +35,9 @@ class PlayerViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AppSettings())
 
     val libraryItems: StateFlow<List<MediaItemModel>> = library.observeMedia()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val playlists: StateFlow<List<PlaylistModel>> = library.observePlaylists()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     init {
@@ -109,13 +113,24 @@ class PlayerViewModel(
 
     fun bumpSpeed() {
         viewModelScope.launch {
-            val speeds = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f, 2.5f)
+            val speeds = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f, 2.5f, 3.0f)
             val current = settings.value.playbackSpeed
             val idx = speeds.indexOfFirst { kotlin.math.abs(it - current) < 0.01f }
             val next = speeds[(idx + 1).floorMod(speeds.size)]
-            settingsStore.setPlaybackSpeed(next)
-            playback.setSpeed(next)
+            setPlaybackSpeed(next)
         }
+    }
+
+    fun setPlaybackSpeed(speed: Float) {
+        viewModelScope.launch {
+            val clamped = speed.coerceIn(0.25f, 3.0f)
+            settingsStore.setPlaybackSpeed(clamped)
+            playback.setSpeed(clamped)
+        }
+    }
+
+    fun nudgeSpeed(delta: Float) {
+        setPlaybackSpeed(settings.value.playbackSpeed + delta)
     }
 
     fun cycleSleepTimer() {
@@ -123,7 +138,35 @@ class PlayerViewModel(
             val options = listOf(0, 15, 30, 45, 60)
             val current = settings.value.sleepTimerMinutes
             val idx = options.indexOf(current).let { if (it < 0) 0 else it }
-            settingsStore.setSleepTimerMinutes(options[(idx + 1) % options.size])
+            setSleepTimerMinutes(options[(idx + 1) % options.size])
+        }
+    }
+
+    fun setSleepTimerMinutes(minutes: Int) {
+        viewModelScope.launch {
+            settingsStore.setSleepTimerMinutes(minutes.coerceIn(0, 120))
+        }
+    }
+
+    fun createPlaylist(name: String) {
+        viewModelScope.launch {
+            val trimmed = name.trim().ifEmpty { return@launch }
+            val id = library.createPlaylist(trimmed)
+            // Seed with current library music so the playlist is immediately playable
+            libraryItems.value
+                .filter { it.kind == MediaKind.MUSIC }
+                .forEachIndexed { index, item ->
+                    library.addToPlaylist(id, item.id, index)
+                }
+        }
+    }
+
+    fun playPlaylist(playlistId: Long) {
+        viewModelScope.launch {
+            val queue = library.getPlaylistMedia(playlistId)
+            if (queue.isEmpty()) return@launch
+            playback.awaitConnected()
+            playback.play(queue, 0)
         }
     }
 

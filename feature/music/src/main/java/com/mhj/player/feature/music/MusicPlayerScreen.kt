@@ -17,16 +17,21 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -84,7 +89,7 @@ fun MusicPlayerScreen(
             HeaderOrb(
                 onClick = onOpenTopMenu,
                 dark = dark,
-                iconRes = if (dark) R.drawable.icon_mid_equalizer else R.drawable.icon_porc_equalizer,
+                iconRes = if (dark) R.drawable.icon_mid_library else R.drawable.icon_porc_library,
             )
             BrandLogoHeader(modifier = Modifier.weight(1f))
             HeaderOrb(
@@ -96,34 +101,49 @@ fun MusicPlayerScreen(
 
         Spacer(Modifier.height(if (dark) 8.dp else 14.dp))
 
-        // Album: board-cropped multi-line gold frame + soft gold halo
+        // Clean single gold frame around cover (no torn bitmap crops / no pale wash)
+        val artCorner = if (dark) 26.dp else 34.dp
         Box(
             modifier = Modifier
-                .fillMaxWidth(if (dark) 0.88f else 0.84f)
-                .aspectRatio(1f)
-                .softGoldHalo(
-                    radius = if (dark) 28.dp else 36.dp,
-                    bloom = if (dark) 22.dp else 18.dp,
-                    intensity = if (dark) 0.48f else 0.38f,
-                ),
+                .fillMaxWidth(if (dark) 0.86f else 0.82f)
+                .aspectRatio(1f),
             contentAlignment = Alignment.Center,
         ) {
             Image(
                 painter = painterResource(R.drawable.demo_album_art),
                 contentDescription = null,
                 modifier = Modifier
-                    .fillMaxSize(if (dark) 0.86f else 0.82f)
-                    .clip(RoundedCornerShape(if (dark) 26.dp else 34.dp)),
+                    .fillMaxSize()
+                    .padding(10.dp)
+                    .clip(RoundedCornerShape(artCorner))
+                    .border(
+                        width = 1.6.dp,
+                        brush = Brush.linearGradient(
+                            listOf(MhjColors.GoldHi, MhjColors.Gold, MhjColors.GoldLo),
+                        ),
+                        shape = RoundedCornerShape(artCorner),
+                    ),
                 contentScale = ContentScale.Crop,
             )
-            Image(
-                painter = painterResource(
-                    if (dark) R.drawable.chrome_mid_album_frame else R.drawable.chrome_porc_album_frame,
-                ),
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.FillBounds,
-            )
+            // Outer hairline twin for thin dual-line look without glitch artifacts
+            Canvas(Modifier.fillMaxSize()) {
+                val pad = 4.dp.toPx()
+                val stroke = 1.1.dp.toPx()
+                val radius = artCorner.toPx() + 4.dp.toPx()
+                drawRoundRect(
+                    brush = Brush.linearGradient(
+                        listOf(
+                            MhjColors.GoldHi.copy(alpha = 0.75f),
+                            MhjColors.Gold.copy(alpha = 0.55f),
+                            MhjColors.GoldLo.copy(alpha = 0.7f),
+                        ),
+                    ),
+                    topLeft = Offset(pad, pad),
+                    size = Size(size.width - pad * 2, size.height - pad * 2),
+                    cornerRadius = CornerRadius(radius, radius),
+                    style = Stroke(width = stroke),
+                )
+            }
         }
 
         Spacer(Modifier.height(if (dark) 14.dp else 16.dp))
@@ -196,43 +216,36 @@ fun MusicPlayerScreen(
         BottomNav(
             dark = dark,
             onHome = onOpenBottomMenu,
-            onLibrary = onOpenTopMenu,
         )
     }
 }
 
-/** Board header: gold-rim glass orb well + official pack glyph. */
+/** Header orb: thin gold rim only — no emboss/softHalo wash behind logo buttons. */
 @Composable
 private fun HeaderOrb(onClick: () -> Unit, dark: Boolean, iconRes: Int) {
-    if (dark) {
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .clickable(onClick = onClick),
-            contentAlignment = Alignment.Center,
-        ) {
-            Image(
-                painter = painterResource(R.drawable.chrome_mid_orb_well),
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Fit,
+    Box(
+        modifier = Modifier
+            .size(if (dark) 42.dp else 46.dp)
+            .clip(CircleShape)
+            .background(
+                if (dark) Color(0xFF1A1612) else Color(0xFFF3EADF),
             )
-            Image(
-                painter = painterResource(iconRes),
-                contentDescription = null,
-                modifier = Modifier.size(20.dp),
-                contentScale = ContentScale.Fit,
+            .border(
+                width = 1.4.dp,
+                brush = Brush.linearGradient(
+                    listOf(MhjColors.GoldHi.copy(alpha = 0.9f), MhjColors.GoldLo.copy(alpha = 0.75f)),
+                ),
+                shape = CircleShape,
             )
-        }
-    } else {
-        EmbossCircle(onClick = onClick, diameter = 48.dp, ringGold = true) {
-            Image(
-                painter = painterResource(iconRes),
-                contentDescription = null,
-                modifier = Modifier.size(22.dp),
-                contentScale = ContentScale.Fit,
-            )
-        }
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Image(
+            painter = painterResource(iconRes),
+            contentDescription = null,
+            modifier = Modifier.size(if (dark) 20.dp else 22.dp),
+            contentScale = ContentScale.Fit,
+        )
     }
 }
 
@@ -283,7 +296,6 @@ private fun MidGlyph(res: Int, onClick: () -> Unit, size: Dp) {
         contentDescription = null,
         modifier = Modifier
             .size(size)
-            .softGoldHalo(size / 2, bloom = 8.dp, intensity = 0.28f)
             .clickable(onClick = onClick),
         contentScale = ContentScale.Fit,
     )
@@ -333,93 +345,38 @@ private fun PorcelainOrb(res: Int, onClick: () -> Unit, size: Dp) {
     }
 }
 
+/** Bottom nav: Home only (Library lives on top-left). */
 @Composable
-private fun BottomNav(dark: Boolean, onHome: () -> Unit, onLibrary: () -> Unit) {
+private fun BottomNav(dark: Boolean, onHome: () -> Unit) {
     val c = MhjTheme.colors
-    if (dark) {
-        Row(
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = if (dark) 10.dp else 14.dp, top = 4.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 10.dp, top = 4.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically,
+                .clickable(onClick = onHome)
+                .padding(horizontal = 28.dp, vertical = 8.dp),
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier
-                    .clickable(onClick = onHome)
-                    .padding(horizontal = 24.dp, vertical = 8.dp),
-            ) {
-                Image(
-                    painter = painterResource(R.drawable.icon_mid_home_active),
-                    contentDescription = "Home",
-                    modifier = Modifier.size(34.dp),
-                    contentScale = ContentScale.Fit,
-                )
-                Spacer(Modifier.height(4.dp))
-                Text("Home", color = MhjColors.GoldHi, fontSize = 11.sp, fontFamily = FontFamily.Serif)
-            }
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier
-                    .clickable(onClick = onLibrary)
-                    .padding(horizontal = 24.dp, vertical = 8.dp),
-            ) {
-                Image(
-                    painter = painterResource(R.drawable.icon_mid_library),
-                    contentDescription = "Library",
-                    modifier = Modifier.size(34.dp),
-                    contentScale = ContentScale.Fit,
-                )
-                Spacer(Modifier.height(4.dp))
-                Text("Library", color = MhjColors.Gold.copy(alpha = 0.85f), fontSize = 11.sp, fontFamily = FontFamily.Serif)
-            }
-        }
-    } else {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 14.dp)
-                .softEmboss(28.dp, c.lightShadow, c.darkShadow, 10.dp)
-                .clip(RoundedCornerShape(28.dp))
-                .background(
-                    Brush.verticalGradient(
-                        listOf(Color(0xE8F7F0E6), Color(0xCCEFE4D4)),
-                    ),
+            Image(
+                painter = painterResource(
+                    if (dark) R.drawable.icon_mid_home_active else R.drawable.icon_porc_home_active,
                 ),
-        ) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 10.dp, horizontal = 12.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.clickable(onClick = onHome),
-                ) {
-                    Image(
-                        painter = painterResource(R.drawable.icon_porc_home_active),
-                        contentDescription = "Home",
-                        modifier = Modifier.size(34.dp),
-                        contentScale = ContentScale.Fit,
-                    )
-                    Text("Home", color = c.primary, fontSize = 11.sp, fontFamily = FontFamily.Serif)
-                }
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.clickable(onClick = onLibrary),
-                ) {
-                    Image(
-                        painter = painterResource(R.drawable.icon_porc_library),
-                        contentDescription = "Library",
-                        modifier = Modifier.size(34.dp),
-                        contentScale = ContentScale.Fit,
-                    )
-                    Text("Library", color = c.muted, fontSize = 11.sp, fontFamily = FontFamily.Serif)
-                }
-            }
+                contentDescription = "Home",
+                modifier = Modifier.size(34.dp),
+                contentScale = ContentScale.Fit,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Home",
+                color = if (dark) MhjColors.GoldHi else c.primary,
+                fontSize = 11.sp,
+                fontFamily = FontFamily.Serif,
+            )
         }
     }
 }

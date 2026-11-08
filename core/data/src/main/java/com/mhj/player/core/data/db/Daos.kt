@@ -33,6 +33,29 @@ interface PlaylistDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertEntry(entry: PlaylistEntryEntity)
 
+    @Query(
+        """
+        SELECT m.* FROM media_items m
+        INNER JOIN playlist_entries e ON e.mediaId = m.id
+        WHERE e.playlistId = :playlistId
+        ORDER BY e.position ASC
+        """,
+    )
+    fun observeMediaInPlaylist(playlistId: Long): Flow<List<MediaItemEntity>>
+
+    @Query(
+        """
+        SELECT m.* FROM media_items m
+        INNER JOIN playlist_entries e ON e.mediaId = m.id
+        WHERE e.playlistId = :playlistId
+        ORDER BY e.position ASC
+        """,
+    )
+    suspend fun getMediaInPlaylist(playlistId: Long): List<MediaItemEntity>
+
+    @Query("SELECT COUNT(*) FROM playlist_entries WHERE playlistId = :playlistId")
+    fun observeEntryCount(playlistId: Long): Flow<Int>
+
     @Query("DELETE FROM playlists WHERE id = :id")
     suspend fun delete(id: Long)
 }

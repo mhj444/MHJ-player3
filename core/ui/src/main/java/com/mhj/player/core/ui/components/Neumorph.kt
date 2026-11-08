@@ -165,7 +165,7 @@ fun BoardBackground(
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Crop,
         )
-        // Soft gold bloom behind album only — backgrounds are chrome-free
+        // Soft gold bloom behind album region only — keep top logo zone free of pale wash
         if (dark) {
             Box(
                 modifier = Modifier
@@ -173,12 +173,12 @@ fun BoardBackground(
                     .drawBehind {
                         drawCircle(
                             brush = Brush.radialGradient(
-                                listOf(Color(0x28D4AF37), Color.Transparent),
-                                center = Offset(size.width / 2f, size.height * 0.28f),
-                                radius = size.minDimension * 0.48f,
+                                listOf(Color(0x1AD4AF37), Color.Transparent),
+                                center = Offset(size.width / 2f, size.height * 0.36f),
+                                radius = size.minDimension * 0.40f,
                             ),
-                            center = Offset(size.width / 2f, size.height * 0.28f),
-                            radius = size.minDimension * 0.48f,
+                            center = Offset(size.width / 2f, size.height * 0.36f),
+                            radius = size.minDimension * 0.40f,
                         )
                     },
             )
