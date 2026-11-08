@@ -39,26 +39,26 @@ fun Modifier.softEmboss(
     elevation: Dp = 12.dp,
 ): Modifier = drawBehind {
     val r = radius.toPx()
-    val e = elevation.toPx().coerceAtMost(18.dp.toPx())
+    val e = elevation.toPx().coerceAtMost(22.dp.toPx())
     drawIntoCanvas { canvas ->
         val paint = Paint()
         val fw = paint.asFrameworkPaint()
         fw.isAntiAlias = true
-        // soft dark (bottom-right)
+        // soft dark (bottom-right) — stronger for board-like depth
         fw.setShadowLayer(
-            e * 1.15f,
-            e * 0.35f,
+            e * 1.35f,
             e * 0.42f,
-            dark.copy(alpha = (dark.alpha * 0.45f).coerceIn(0.12f, 0.38f)).toArgb(),
+            e * 0.50f,
+            dark.copy(alpha = (dark.alpha * 0.58f).coerceIn(0.16f, 0.48f)).toArgb(),
         )
         fw.color = Color.Transparent.toArgb()
         canvas.drawRoundRect(0f, 0f, size.width, size.height, r, r, paint)
-        // soft light (top-left) — keep subtle so porcelain/midnight stay board-like
+        // soft light (top-left)
         fw.setShadowLayer(
-            e * 0.95f,
-            -e * 0.28f,
-            -e * 0.28f,
-            light.copy(alpha = (light.alpha * 0.55f).coerceIn(0.08f, 0.42f)).toArgb(),
+            e * 1.05f,
+            -e * 0.34f,
+            -e * 0.34f,
+            light.copy(alpha = (light.alpha * 0.70f).coerceIn(0.12f, 0.55f)).toArgb(),
         )
         canvas.drawRoundRect(0f, 0f, size.width, size.height, r, r, paint)
         fw.setShadowLayer(0f, 0f, 0f, 0)
@@ -111,46 +111,24 @@ fun BoardBackground(modifier: Modifier = Modifier) {
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Crop,
         )
-        // Light atmospheric wash only — textures are already clean (no UI chrome)
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    if (dark) {
-                        Brush.verticalGradient(
-                            listOf(
-                                Color(0x33000000),
-                                Color.Transparent,
-                                Color(0x55000000),
+        // Soft gold bloom behind album only — backgrounds are chrome-free
+        if (dark) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .drawBehind {
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                listOf(Color(0x28D4AF37), Color.Transparent),
+                                center = Offset(size.width / 2f, size.height * 0.28f),
+                                radius = size.minDimension * 0.48f,
                             ),
-                        )
-                    } else {
-                        Brush.verticalGradient(
-                            listOf(
-                                Color(0x22FFFBF6),
-                                Color.Transparent,
-                                Color(0x33EFE6DA),
-                            ),
+                            center = Offset(size.width / 2f, size.height * 0.28f),
+                            radius = size.minDimension * 0.48f,
                         )
                     },
-                ),
-        )
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .drawBehind {
-                    val glow = if (dark) Color(0x33D4AF37) else Color(0x22C9A227)
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            listOf(glow, Color.Transparent),
-                            center = Offset(size.width / 2f, size.height * 0.28f),
-                            radius = size.minDimension * 0.5f,
-                        ),
-                        center = Offset(size.width / 2f, size.height * 0.28f),
-                        radius = size.minDimension * 0.5f,
-                    )
-                },
-        )
+            )
+        }
     }
 }
 

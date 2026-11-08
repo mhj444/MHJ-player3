@@ -1,11 +1,13 @@
 package com.mhj.player.feature.music
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -15,23 +17,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Repeat
-import androidx.compose.material.icons.filled.RepeatOne
-import androidx.compose.material.icons.filled.Shuffle
-import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material.icons.filled.SkipPrevious
-import androidx.compose.material.icons.outlined.Cast
 import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material.icons.outlined.GraphicEq
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -41,7 +33,9 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
@@ -52,17 +46,13 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mhj.player.core.model.PlayerUiState
-import com.mhj.player.core.model.RepeatMode
 import com.mhj.player.core.ui.R
 import com.mhj.player.core.ui.components.BrandLogoHeader
-import com.mhj.player.core.ui.components.EmbossCircle
 import com.mhj.player.core.ui.components.EqualizerVisualizer
-import com.mhj.player.core.ui.components.FrostPanel
 import com.mhj.player.core.ui.components.softEmboss
-import com.mhj.player.core.ui.components.softGoldHairline
-import com.mhj.player.core.ui.components.softInset
 import com.mhj.player.core.ui.theme.MhjColors
 import com.mhj.player.core.ui.theme.MhjTheme
+import kotlin.math.roundToLong
 
 @Composable
 fun MusicPlayerScreen(
@@ -78,6 +68,7 @@ fun MusicPlayerScreen(
     modifier: Modifier = Modifier,
 ) {
     val c = MhjTheme.colors
+    val dark = c.isDark
     val title = state.current?.title ?: "The Last Kingdom"
     val artist = state.current?.artist ?: "Ramin Djawadi"
     val duration = state.durationMs.coerceAtLeast(0L)
@@ -94,57 +85,65 @@ fun MusicPlayerScreen(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            HeaderOrb(onClick = onOpenTopMenu) {
-                Icon(Icons.Outlined.GraphicEq, null, tint = c.primary, modifier = Modifier.size(17.dp))
-            }
+            HeaderChrome(onClick = onOpenTopMenu, dark = dark, left = true)
             BrandLogoHeader(modifier = Modifier.weight(1f))
-            HeaderOrb(onClick = { }) {
-                Icon(Icons.Outlined.Cast, null, tint = c.primary.copy(alpha = 0.75f), modifier = Modifier.size(17.dp))
-            }
+            HeaderChrome(onClick = { }, dark = dark, left = false)
         }
 
         Spacer(Modifier.height(10.dp))
 
-        // Board album frame: soft emboss well + gold hairline + art
+        // Album + thick glowing glass gold rim (bitmap frame over art)
         Box(
             modifier = Modifier
-                .fillMaxWidth(0.82f)
+                .fillMaxWidth(0.86f)
                 .aspectRatio(1f)
-                .drawBehind {
-                    // soft gold bloom behind frame (board glow) — keep subtle
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            listOf(c.glow.copy(alpha = 0.35f), Color.Transparent),
-                            center = Offset(size.width / 2f, size.height / 2f),
-                            radius = size.minDimension * 0.58f,
-                        ),
-                        radius = size.minDimension * 0.58f,
-                    )
-                }
-                .softEmboss(30.dp, c.lightShadow, c.darkShadow, 10.dp)
-                .softInset(30.dp, c.lightShadow, c.darkShadow)
-                .clip(RoundedCornerShape(30.dp))
-                .background(Brush.verticalGradient(listOf(c.elevated, c.recess)))
-                .softGoldHairline(30.dp),
+                .then(
+                    if (!dark) {
+                        Modifier.drawBehind {
+                            // soft porcelain glass inset halo
+                            drawRoundRect(
+                                brush = Brush.radialGradient(
+                                    listOf(Color(0x33C4A46A), Color.Transparent),
+                                ),
+                                cornerRadius = androidx.compose.ui.geometry.CornerRadius(48.dp.toPx()),
+                            )
+                        }
+                    } else {
+                        Modifier.drawBehind {
+                            drawCircle(
+                                brush = Brush.radialGradient(
+                                    listOf(Color(0x44D4AF37), Color.Transparent),
+                                ),
+                                radius = size.minDimension * 0.55f,
+                            )
+                        }
+                    },
+                ),
             contentAlignment = Alignment.Center,
         ) {
             Image(
-                painter = painterResource(id = R.drawable.demo_album_art),
+                painter = painterResource(R.drawable.demo_album_art),
                 contentDescription = null,
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(10.dp)
-                    .clip(RoundedCornerShape(22.dp))
-                    .border(1.4.dp, MhjColors.GoldMetal, RoundedCornerShape(22.dp)),
+                    .fillMaxSize(if (dark) 0.80f else 0.84f)
+                    .clip(RoundedCornerShape(if (dark) 26.dp else 30.dp)),
                 contentScale = ContentScale.Crop,
+            )
+            Image(
+                painter = painterResource(
+                    if (dark) R.drawable.chrome_mid_album_frame else R.drawable.chrome_porc_album_frame,
+                ),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.FillBounds,
             )
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(14.dp))
 
         Text(
             text = title,
-            color = if (c.isDark) Color.White else c.onBackground,
+            color = if (dark) Color.White else c.onBackground,
             fontSize = 22.sp,
             fontFamily = FontFamily.Serif,
             fontWeight = FontWeight.SemiBold,
@@ -156,7 +155,7 @@ fun MusicPlayerScreen(
         Spacer(Modifier.height(2.dp))
         Text(
             text = artist,
-            color = if (c.isDark) MhjColors.GoldHi.copy(alpha = 0.85f) else c.muted,
+            color = if (dark) MhjColors.GoldHi.copy(alpha = 0.9f) else c.muted,
             fontSize = 13.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -165,19 +164,14 @@ fun MusicPlayerScreen(
         Spacer(Modifier.height(8.dp))
         EqualizerVisualizer(
             active = state.isPlaying,
-            modifier = Modifier.fillMaxWidth(0.9f),
+            modifier = Modifier.fillMaxWidth(0.92f),
         )
 
-        Spacer(Modifier.height(2.dp))
-        Slider(
-            value = if (duration > 0) position.toFloat() / duration else 0f,
-            onValueChange = { if (duration > 0) onSeek((it * duration).toLong()) },
-            modifier = Modifier.fillMaxWidth(),
-            colors = SliderDefaults.colors(
-                thumbColor = MhjColors.GoldHi,
-                activeTrackColor = MhjColors.GoldTrack,
-                inactiveTrackColor = c.controlFill,
-            ),
+        Spacer(Modifier.height(6.dp))
+        GoldSeekBar(
+            progress = if (duration > 0) position.toFloat() / duration else 0f,
+            onSeekFraction = { frac -> if (duration > 0) onSeek((frac * duration).roundToLong()) },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
         )
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 2.dp),
@@ -187,104 +181,268 @@ fun MusicPlayerScreen(
             Text(formatTime(duration), color = c.muted, fontSize = 11.sp)
         }
 
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(6.dp))
 
-        // Board transport: five circular glass/embossed controls
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            TransportOrb(Icons.Filled.Shuffle, state.shuffle, onShuffle, 46.dp)
-            TransportOrb(Icons.Filled.SkipPrevious, true, onPrevious, 50.dp, iconSize = 22.dp)
-            EmbossCircle(
-                onClick = onPlayPause,
-                diameter = 74.dp,
-                filledGold = !c.isDark,
-                ringGold = true,
-            ) {
-                Icon(
-                    if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                    contentDescription = "Play pause",
-                    tint = if (c.isDark) MhjColors.GoldHi else Color(0xFF2A2118),
-                    modifier = Modifier.size(34.dp),
-                )
-            }
-            TransportOrb(Icons.Filled.SkipNext, true, onNext, 50.dp, iconSize = 22.dp)
-            TransportOrb(
-                if (state.repeatMode == RepeatMode.ONE) Icons.Filled.RepeatOne else Icons.Filled.Repeat,
-                state.repeatMode != RepeatMode.OFF,
-                onRepeat,
-                46.dp,
+        if (dark) {
+            MidnightTransport(
+                state = state,
+                onPlayPause = onPlayPause,
+                onPrevious = onPrevious,
+                onNext = onNext,
+                onShuffle = onShuffle,
+                onRepeat = onRepeat,
+            )
+        } else {
+            PorcelainTransport(
+                state = state,
+                onPlayPause = onPlayPause,
+                onPrevious = onPrevious,
+                onNext = onNext,
+                onShuffle = onShuffle,
+                onRepeat = onRepeat,
             )
         }
 
         Spacer(Modifier.weight(1f))
 
-        FrostPanel(
+        BottomNav(
+            dark = dark,
+            onHome = onOpenBottomMenu,
+            onLibrary = onOpenTopMenu,
+        )
+    }
+}
+
+@Composable
+private fun HeaderChrome(onClick: () -> Unit, dark: Boolean, left: Boolean) {
+    val res = when {
+        dark && left -> R.drawable.chrome_mid_orb_eq
+        dark && !left -> R.drawable.chrome_mid_orb_cast
+        !dark && left -> R.drawable.chrome_porc_tile_eq
+        else -> R.drawable.chrome_porc_tile_cast
+    }
+    Image(
+        painter = painterResource(res),
+        contentDescription = null,
+        modifier = Modifier
+            .size(if (dark) 44.dp else 48.dp)
+            .clickable(onClick = onClick),
+        contentScale = ContentScale.Fit,
+    )
+}
+
+/** Midnight: bitmap glass play disc + glowing embossed transport glyphs. */
+@Composable
+private fun MidnightTransport(
+    state: PlayerUiState,
+    onPlayPause: () -> Unit,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    onShuffle: () -> Unit,
+    onRepeat: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        MidGlyph(R.drawable.chrome_mid_shuffle, onShuffle, 44.dp)
+        MidGlyph(R.drawable.chrome_mid_prev, onPrevious, 50.dp)
+        Box(
+            modifier = Modifier
+                .size(84.dp)
+                .clickable(onClick = onPlayPause)
+                .drawBehind {
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            listOf(Color(0x88D4AF37), Color(0x33D4AF37), Color.Transparent),
+                        ),
+                        radius = size.minDimension * 0.68f,
+                    )
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Image(
+                painter = painterResource(R.drawable.chrome_mid_play),
+                contentDescription = "Play pause",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit,
+            )
+            if (!state.isPlaying) {
+                Icon(
+                    Icons.Filled.PlayArrow,
+                    contentDescription = null,
+                    tint = MhjColors.GoldHi,
+                    modifier = Modifier.size(34.dp),
+                )
+            }
+        }
+        MidGlyph(R.drawable.chrome_mid_next, onNext, 50.dp)
+        MidGlyph(R.drawable.chrome_mid_repeat, onRepeat, 44.dp)
+    }
+}
+
+@Composable
+private fun MidGlyph(res: Int, onClick: () -> Unit, size: Dp) {
+    Image(
+        painter = painterResource(res),
+        contentDescription = null,
+        modifier = Modifier
+            .size(size)
+            .clickable(onClick = onClick),
+        contentScale = ContentScale.Fit,
+    )
+}
+
+/** Porcelain: cream embossed circle bitmaps; play is same family (not solid gold). */
+@Composable
+private fun PorcelainTransport(
+    state: PlayerUiState,
+    onPlayPause: () -> Unit,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    onShuffle: () -> Unit,
+    onRepeat: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        PorcelainOrb(R.drawable.chrome_porc_shuffle, onShuffle, 50.dp)
+        PorcelainOrb(R.drawable.chrome_porc_prev, onPrevious, 54.dp)
+        Box(
+            modifier = Modifier
+                .size(78.dp)
+                .clickable(onClick = onPlayPause),
+            contentAlignment = Alignment.Center,
+        ) {
+            Image(
+                painter = painterResource(R.drawable.chrome_porc_play),
+                contentDescription = "Play pause",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit,
+            )
+            // Bitmap already has pause bars; overlay play arrow when paused
+            if (!state.isPlaying) {
+                Icon(
+                    Icons.Filled.PlayArrow,
+                    contentDescription = null,
+                    tint = MhjColors.GoldLo,
+                    modifier = Modifier.size(30.dp),
+                )
+            }
+        }
+        PorcelainOrb(R.drawable.chrome_porc_next, onNext, 54.dp)
+        PorcelainOrb(R.drawable.chrome_porc_repeat, onRepeat, 50.dp)
+    }
+}
+
+@Composable
+private fun PorcelainOrb(res: Int, onClick: () -> Unit, size: Dp) {
+    Image(
+        painter = painterResource(res),
+        contentDescription = null,
+        modifier = Modifier
+            .size(size)
+            .clickable(onClick = onClick),
+        contentScale = ContentScale.Fit,
+    )
+}
+
+@Composable
+private fun BottomNav(dark: Boolean, onHome: () -> Unit, onLibrary: () -> Unit) {
+    val c = MhjTheme.colors
+    if (dark) {
+        // Illuminated gold icons — no heavy black capsule
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 12.dp),
-            radius = 28.dp,
+                .padding(bottom = 10.dp)
+                .padding(vertical = 10.dp)
+                .drawBehind {
+                    // soft under-glow, not a capsule
+                    drawRect(
+                        brush = Brush.verticalGradient(
+                            listOf(Color.Transparent, Color(0x22D4AF37), Color.Transparent),
+                        ),
+                    )
+                },
+            horizontalArrangement = Arrangement.SpaceEvenly,
+        ) {
+            IlluminatedNavItem(Icons.Filled.Home, "Home", true, onHome)
+            IlluminatedNavItem(Icons.Outlined.Folder, "Library", false, onLibrary)
+        }
+    } else {
+        // Frosted glass bar + deeply recessed tiles
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 12.dp)
+                .softEmboss(28.dp, c.lightShadow, c.darkShadow, 10.dp)
+                .clip(RoundedCornerShape(28.dp))
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Color(0xE8F7F0E6),
+                            Color(0xCCEFE4D4),
+                        ),
+                    ),
+                ),
         ) {
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 12.dp),
+                    .padding(vertical = 10.dp, horizontal = 12.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
             ) {
-                NavItem(Icons.Filled.Home, "Home", true, onOpenBottomMenu)
-                NavItem(Icons.Outlined.Folder, "Library", false, onOpenTopMenu)
+                RecessedNavTile(Icons.Filled.Home, "Home", true, onHome)
+                RecessedNavTile(Icons.Outlined.Folder, "Library", false, onLibrary)
             }
         }
     }
 }
 
 @Composable
-private fun HeaderOrb(onClick: () -> Unit, content: @Composable () -> Unit) {
-    val c = MhjTheme.colors
-    Box(
-        modifier = Modifier
-            .size(42.dp)
-            .softEmboss(21.dp, c.lightShadow, c.darkShadow, 9.dp)
-            .clip(CircleShape)
-            .background(Brush.verticalGradient(listOf(c.elevated, c.surface)))
-            .border(
-                width = 1.dp,
-                brush = Brush.linearGradient(
-                    listOf(c.lightShadow.copy(alpha = 0.7f), c.darkShadow.copy(alpha = 0.2f)),
-                ),
-                shape = CircleShape,
-            )
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) { content() }
-}
-
-@Composable
-private fun TransportOrb(
+private fun IlluminatedNavItem(
     icon: ImageVector,
-    active: Boolean,
+    label: String,
+    selected: Boolean,
     onClick: () -> Unit,
-    diameter: Dp,
-    iconSize: Dp = 18.dp,
 ) {
-    EmbossCircle(
-        onClick = onClick,
-        diameter = diameter,
-        ringGold = active,
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .clickable(onClick = onClick)
+            .drawBehind {
+                if (selected) {
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            listOf(Color(0x55D4AF37), Color.Transparent),
+                        ),
+                        radius = size.maxDimension * 0.55f,
+                    )
+                }
+            }
+            .padding(horizontal = 16.dp, vertical = 4.dp),
     ) {
         Icon(
             icon,
-            contentDescription = null,
-            tint = if (active) MhjTheme.colors.primary else MhjTheme.colors.muted,
-            modifier = Modifier.size(iconSize),
+            label,
+            tint = if (selected) MhjColors.GoldHi else MhjColors.Gold.copy(alpha = 0.72f),
+            modifier = Modifier.size(26.dp),
+        )
+        Text(
+            label,
+            color = if (selected) MhjColors.GoldHi else MhjColors.Gold.copy(alpha = 0.72f),
+            fontSize = 11.sp,
+            fontFamily = FontFamily.Serif,
         )
     }
 }
 
 @Composable
-private fun NavItem(
+private fun RecessedNavTile(
     icon: ImageVector,
     label: String,
     selected: Boolean,
@@ -294,26 +452,79 @@ private fun NavItem(
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
-            .clip(RoundedCornerShape(14.dp))
-            .then(
-                if (selected) {
-                    Modifier
-                        .softEmboss(14.dp, c.lightShadow, c.darkShadow, 6.dp)
-                        .background(c.controlFill, RoundedCornerShape(14.dp))
-                } else {
-                    Modifier
-                },
+            .width(108.dp)
+            .softEmboss(
+                16.dp,
+                // inverted for deep recess: dark TL, light BR
+                light = c.darkShadow.copy(alpha = 0.35f),
+                dark = c.lightShadow.copy(alpha = 0.65f),
+                elevation = 8.dp,
+            )
+            .clip(RoundedCornerShape(16.dp))
+            .background(
+                if (selected) Color(0xD8E6D8C4) else Color(0x66EFE6D8),
             )
             .clickable(onClick = onClick)
-            .padding(horizontal = 22.dp, vertical = 4.dp),
+            .padding(vertical = 8.dp),
     ) {
-        Icon(icon, label, tint = if (selected) c.primary else c.muted)
-        Text(
-            label,
-            color = if (selected) c.primary else c.muted,
-            fontSize = 11.sp,
-            fontFamily = FontFamily.Serif,
-        )
+        Icon(icon, label, tint = if (selected) c.primary else c.muted, modifier = Modifier.size(22.dp))
+        Text(label, color = if (selected) c.primary else c.muted, fontSize = 11.sp, fontFamily = FontFamily.Serif)
+    }
+}
+
+/** Board-style thin gold seek with glowing circular thumb (not Material bulk). */
+@Composable
+private fun GoldSeekBar(
+    progress: Float,
+    onSeekFraction: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val p = progress.coerceIn(0f, 1f)
+    BoxWithConstraints(
+        modifier = modifier
+            .height(28.dp)
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures(
+                    onDragStart = { offset ->
+                        onSeekFraction((offset.x / size.width.toFloat()).coerceIn(0f, 1f))
+                    },
+                    onHorizontalDrag = { change, _ ->
+                        change.consume()
+                        onSeekFraction((change.position.x / size.width.toFloat()).coerceIn(0f, 1f))
+                    },
+                )
+            },
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Canvas(Modifier.fillMaxSize()) {
+            val y = size.height / 2f
+            val stroke = 2.2.dp.toPx()
+            drawLine(
+                color = MhjColors.Gold.copy(alpha = 0.28f),
+                start = Offset(0f, y),
+                end = Offset(size.width, y),
+                strokeWidth = stroke,
+                cap = StrokeCap.Round,
+            )
+            val x = size.width * p
+            drawLine(
+                brush = Brush.horizontalGradient(listOf(MhjColors.GoldLo, MhjColors.GoldHi)),
+                start = Offset(0f, y),
+                end = Offset(x, y),
+                strokeWidth = stroke,
+                cap = StrokeCap.Round,
+            )
+            drawCircle(
+                color = MhjColors.GoldGlow,
+                radius = 10.dp.toPx(),
+                center = Offset(x, y),
+            )
+            drawCircle(
+                brush = Brush.radialGradient(listOf(MhjColors.GoldHi, MhjColors.Gold)),
+                radius = 5.5.dp.toPx(),
+                center = Offset(x, y),
+            )
+        }
     }
 }
 

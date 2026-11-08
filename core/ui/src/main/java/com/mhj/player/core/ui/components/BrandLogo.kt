@@ -16,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -27,8 +28,9 @@ import com.mhj.player.core.ui.R
 import com.mhj.player.core.ui.theme.MhjTheme
 
 /**
- * Board-faithful centered brand header:
- * metallic MHJ mark (flame + headphones) + "MHJ Player" with flanking rules.
+ * Board logos as cropped metallic bitmaps:
+ * - Midnight: sharp MHJ flame mark (no circular crest)
+ * - Porcelain: headphones + MHJ metallic mark
  */
 @Composable
 fun BrandLogoHeader(
@@ -41,42 +43,46 @@ fun BrandLogoHeader(
             .fillMaxWidth()
             .padding(vertical = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
         Image(
             painter = painterResource(
-                id = if (colors.isDark) R.drawable.logo_mhj_header_night else R.drawable.logo_mhj_header,
+                id = if (colors.isDark) R.drawable.chrome_mid_logo else R.drawable.chrome_porc_logo,
             ),
             contentDescription = "MHJ",
             modifier = Modifier
-                .height(58.dp)
-                .widthIn(max = 172.dp)
-                .fillMaxWidth(0.48f),
+                .height(if (colors.isDark) 46.dp else 58.dp)
+                .widthIn(max = if (colors.isDark) 180.dp else 168.dp)
+                .fillMaxWidth(if (colors.isDark) 0.50f else 0.44f),
             contentScale = ContentScale.Fit,
         )
         if (showWordmark) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.padding(top = 2.dp),
+                modifier = Modifier.padding(top = 4.dp),
             ) {
-                Hairline(Modifier.width(28.dp), colors.primary.copy(alpha = 0.55f))
+                // Hairlines are a porcelain signature; midnight board is mark + wordmark only
+                if (!colors.isDark) {
+                    Hairline(Modifier.width(34.dp), colors.primary.copy(alpha = 0.55f))
+                }
                 Text(
                     text = "MHJ Player",
-                    color = colors.primary,
-                    fontSize = 12.sp,
+                    color = if (colors.isDark) colors.primary else colors.onBackground,
+                    fontSize = if (colors.isDark) 13.sp else 14.sp,
                     fontFamily = FontFamily.Serif,
                     fontWeight = FontWeight.Medium,
-                    letterSpacing = 1.4.sp,
+                    letterSpacing = 1.2.sp,
                 )
-                Hairline(Modifier.width(28.dp), colors.primary.copy(alpha = 0.55f))
+                if (!colors.isDark) {
+                    Hairline(Modifier.width(34.dp), colors.primary.copy(alpha = 0.55f))
+                }
             }
         }
     }
 }
 
 @Composable
-private fun Hairline(modifier: Modifier, color: androidx.compose.ui.graphics.Color) {
+private fun Hairline(modifier: Modifier, color: Color) {
     Box(
         modifier = modifier
             .height(1.dp)
@@ -85,7 +91,7 @@ private fun Hairline(modifier: Modifier, color: androidx.compose.ui.graphics.Col
                     color = color,
                     start = Offset(0f, size.height / 2f),
                     end = Offset(size.width, size.height / 2f),
-                    strokeWidth = 1.2.dp.toPx(),
+                    strokeWidth = 1.1.dp.toPx(),
                     cap = StrokeCap.Round,
                 )
             },
