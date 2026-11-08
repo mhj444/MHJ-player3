@@ -10,7 +10,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.safeDrawingPadding
@@ -18,15 +17,19 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mhj.player.MhjApp
+import com.mhj.player.core.ui.components.AmbientBackground
 import com.mhj.player.core.ui.components.BottomAudioDrawer
 import com.mhj.player.core.ui.components.TopMenuDrawer
 import com.mhj.player.core.ui.gestures.playerEdgeSwipes
@@ -53,6 +56,14 @@ class MainActivity : ComponentActivity() {
         setContent {
             val settings by viewModel.settings.collectAsStateWithLifecycle()
             MhjPlayerTheme(theme = settings.theme) {
+                val dark = MhjTheme.colors.isDark
+                SideEffect {
+                    val insets = WindowCompat.getInsetsController(window, window.decorView)
+                    insets.isAppearanceLightStatusBars = !dark
+                    insets.isAppearanceLightNavigationBars = !dark
+                    window.statusBarColor = Color.Transparent.toArgb()
+                    window.navigationBarColor = Color.Transparent.toArgb()
+                }
                 PlayerRoot(viewModel = viewModel)
             }
         }
@@ -90,8 +101,6 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MhjTheme.colors.background)
-            .safeDrawingPadding()
             .playerEdgeSwipes(
                 onSwipeDownFromTop = {
                     topOpen = true
@@ -103,6 +112,8 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
                 },
             ),
     ) {
+        AmbientBackground()
+        Box(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
         HorizontalPager(
             state = pagerState,
             modifier = Modifier.fillMaxSize(),
@@ -147,5 +158,6 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
             onEqClick = { /* DSP Phase 3 hook */ },
             onTimerClick = viewModel::cycleSleepTimer,
         )
+        }
     }
 }

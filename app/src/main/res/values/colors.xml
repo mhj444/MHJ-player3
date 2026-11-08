@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="midnight_bg">#000000</color>
+    <color name="midnight_bg">#050505</color>
     <color name="gold">#D4AF37</color>
-    <color name="porcelain_bg">#F8F3ED</color>
-    <color name="ic_launcher_background">#F5F1E9</color>
+    <color name="porcelain_bg">#F5EFE6</color>
+    <color name="ic_launcher_background">#F5EFE6</color>
 </resources>

@@ -125,9 +125,26 @@ fun VideoPlayerScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(colors.glass.copy(alpha = 0.72f))
-                    .border(1.dp, colors.border.copy(alpha = 0.4f), RoundedCornerShape(18.dp))
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                Color(0xCC1A1A1A),
+                                Color(0xE6101010),
+                            ),
+                        ),
+                    )
+                    .border(
+                        width = 1.dp,
+                        brush = Brush.linearGradient(
+                            listOf(
+                                Color(0x66FFFFFF),
+                                colors.border,
+                                Color(0x33000000),
+                            ),
+                        ),
+                        shape = RoundedCornerShape(22.dp),
+                    )
                     .padding(horizontal = 10.dp, vertical = 8.dp),
             ) {
                 Box(
