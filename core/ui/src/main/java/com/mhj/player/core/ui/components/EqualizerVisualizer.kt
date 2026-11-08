@@ -22,12 +22,12 @@ import com.mhj.player.core.ui.theme.MhjTheme
 import kotlin.math.PI
 import kotlin.math.sin
 
-/** Board EQ: tall solid gold bars (not dotted dashes). */
+/** Board EQ: tall solid gold bars (dense, glowing — not dotted dashes). */
 @Composable
 fun EqualizerVisualizer(
     active: Boolean,
     modifier: Modifier = Modifier,
-    barCount: Int = 42,
+    barCount: Int = 48,
 ) {
     val colors = MhjTheme.colors
     val transition = rememberInfiniteTransition(label = "eq")
@@ -40,37 +40,36 @@ fun EqualizerVisualizer(
         ),
         label = "eqPhase",
     )
-    val intensity = if (active) 1f else 0.55f
+    val intensity = if (active) 1f else 0.62f
 
     Canvas(
         modifier = modifier
             .fillMaxWidth()
-            .height(56.dp),
+            .height(64.dp),
     ) {
         val w = size.width
         val h = size.height
-        val gap = w / (barCount * 2.35f)
-        val barW = gap * 1.05f
+        val gap = w / (barCount * 2.55f)
+        val barW = gap * 1.15f
         val total = barCount * (barW + gap) - gap
         val startX = (w - total) / 2f
-        val baseY = h * 0.96f
+        val baseY = h * 0.98f
 
         for (i in 0 until barCount) {
             val t = i / (barCount - 1f)
-            val envelope = sin(t * PI).toFloat().coerceIn(0.18f, 1f)
+            val envelope = sin(t * PI).toFloat().coerceIn(0.22f, 1f)
             val wave = (
                 sin(phase + i * 0.42f) * 0.48f +
                     sin(phase * 1.55f + i * 0.27f) * 0.32f +
-                    0.45f
-                ).coerceIn(0.22f, 1f)
-            val barH = h * 0.94f * wave * envelope * intensity
+                    0.48f
+                ).coerceIn(0.28f, 1f)
+            val barH = h * 0.96f * wave * envelope * intensity
             val x = startX + i * (barW + gap)
             val y = baseY - barH
-            // soft glow behind each tall solid gold bar
             drawRoundRect(
-                color = MhjColors.GoldGlow.copy(alpha = 0.28f),
-                topLeft = Offset(x - 1.5f, y - 1.5f),
-                size = Size(barW + 3f, barH + 3f),
+                color = MhjColors.GoldGlow.copy(alpha = 0.34f),
+                topLeft = Offset(x - 2f, y - 2f),
+                size = Size(barW + 4f, barH + 4f),
                 cornerRadius = CornerRadius(barW / 2f, barW / 2f),
             )
             drawRoundRect(

@@ -50,16 +50,16 @@ fun BrandLogoHeader(
             ),
             contentDescription = "MHJ",
             modifier = Modifier
-                .height(if (colors.isDark) 46.dp else 58.dp)
-                .widthIn(max = if (colors.isDark) 180.dp else 168.dp)
-                .fillMaxWidth(if (colors.isDark) 0.50f else 0.44f),
+                .height(if (colors.isDark) 52.dp else 58.dp)
+                .widthIn(max = if (colors.isDark) 200.dp else 168.dp)
+                .fillMaxWidth(if (colors.isDark) 0.56f else 0.44f),
             contentScale = ContentScale.Fit,
         )
         if (showWordmark) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.padding(top = 4.dp),
+                modifier = Modifier.padding(top = 2.dp),
             ) {
                 // Hairlines are a porcelain signature; midnight board is mark + wordmark only
                 if (!colors.isDark) {

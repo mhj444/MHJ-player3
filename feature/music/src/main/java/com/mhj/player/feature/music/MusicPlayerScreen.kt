@@ -80,27 +80,55 @@ fun MusicPlayerScreen(
             .padding(horizontal = 22.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Spacer(Modifier.height(4.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            HeaderChrome(onClick = onOpenTopMenu, dark = dark, left = true)
-            BrandLogoHeader(modifier = Modifier.weight(1f))
-            HeaderChrome(onClick = { }, dark = dark, left = false)
+        Spacer(Modifier.height(2.dp))
+        if (dark) {
+            // Board-cropped header strip (logo + arcs + orb wells) with tap targets
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(72.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.chrome_mid_header_strip),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.FillWidth,
+                )
+                Row(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        Modifier
+                            .size(56.dp)
+                            .clickable(onClick = onOpenTopMenu),
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Box(Modifier.size(56.dp))
+                }
+            }
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                HeaderChrome(onClick = onOpenTopMenu, dark = dark, left = true)
+                BrandLogoHeader(modifier = Modifier.weight(1f))
+                HeaderChrome(onClick = { }, dark = dark, left = false)
+            }
         }
 
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(if (dark) 4.dp else 10.dp))
 
-        // Album + thick glowing glass gold rim (bitmap frame over art)
+        // Album + board gold-glass frame bitmap over art
         Box(
             modifier = Modifier
-                .fillMaxWidth(0.86f)
+                .fillMaxWidth(if (dark) 0.90f else 0.86f)
                 .aspectRatio(1f)
                 .then(
                     if (!dark) {
                         Modifier.drawBehind {
-                            // soft porcelain glass inset halo
                             drawRoundRect(
                                 brush = Brush.radialGradient(
                                     listOf(Color(0x33C4A46A), Color.Transparent),
@@ -112,9 +140,9 @@ fun MusicPlayerScreen(
                         Modifier.drawBehind {
                             drawCircle(
                                 brush = Brush.radialGradient(
-                                    listOf(Color(0x44D4AF37), Color.Transparent),
+                                    listOf(Color(0x55D4AF37), Color.Transparent),
                                 ),
-                                radius = size.minDimension * 0.55f,
+                                radius = size.minDimension * 0.58f,
                             )
                         }
                     },
@@ -125,7 +153,7 @@ fun MusicPlayerScreen(
                 painter = painterResource(R.drawable.demo_album_art),
                 contentDescription = null,
                 modifier = Modifier
-                    .fillMaxSize(if (dark) 0.80f else 0.84f)
+                    .fillMaxSize(if (dark) 0.84f else 0.84f)
                     .clip(RoundedCornerShape(if (dark) 26.dp else 30.dp)),
                 contentScale = ContentScale.Crop,
             )
@@ -139,12 +167,12 @@ fun MusicPlayerScreen(
             )
         }
 
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(if (dark) 10.dp else 14.dp))
 
         Text(
             text = title,
-            color = if (dark) Color.White else c.onBackground,
-            fontSize = 22.sp,
+            color = if (dark) Color(0xFFF5F0E6) else c.onBackground,
+            fontSize = if (dark) 20.sp else 22.sp,
             fontFamily = FontFamily.Serif,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
@@ -155,19 +183,19 @@ fun MusicPlayerScreen(
         Spacer(Modifier.height(2.dp))
         Text(
             text = artist,
-            color = if (dark) MhjColors.GoldHi.copy(alpha = 0.9f) else c.muted,
+            color = if (dark) MhjColors.Gold.copy(alpha = 0.92f) else c.muted,
             fontSize = 13.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
 
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(if (dark) 6.dp else 8.dp))
         EqualizerVisualizer(
             active = state.isPlaying,
-            modifier = Modifier.fillMaxWidth(0.92f),
+            modifier = Modifier.fillMaxWidth(0.94f),
         )
 
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(4.dp))
         GoldSeekBar(
             progress = if (duration > 0) position.toFloat() / duration else 0f,
             onSeekFraction = { frac -> if (duration > 0) onSeek((frac * duration).roundToLong()) },
@@ -246,18 +274,18 @@ private fun MidnightTransport(
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        MidGlyph(R.drawable.chrome_mid_shuffle, onShuffle, 44.dp)
-        MidGlyph(R.drawable.chrome_mid_prev, onPrevious, 50.dp)
+        MidGlyph(R.drawable.chrome_mid_shuffle, onShuffle, 52.dp)
+        MidGlyph(R.drawable.chrome_mid_prev, onPrevious, 58.dp)
         Box(
             modifier = Modifier
-                .size(84.dp)
+                .size(100.dp)
                 .clickable(onClick = onPlayPause)
                 .drawBehind {
                     drawCircle(
                         brush = Brush.radialGradient(
-                            listOf(Color(0x88D4AF37), Color(0x33D4AF37), Color.Transparent),
+                            listOf(Color(0xCCD4AF37), Color(0x55D4AF37), Color.Transparent),
                         ),
-                        radius = size.minDimension * 0.68f,
+                        radius = size.minDimension * 0.78f,
                     )
                 },
             contentAlignment = Alignment.Center,
@@ -273,12 +301,12 @@ private fun MidnightTransport(
                     Icons.Filled.PlayArrow,
                     contentDescription = null,
                     tint = MhjColors.GoldHi,
-                    modifier = Modifier.size(34.dp),
+                    modifier = Modifier.size(38.dp),
                 )
             }
         }
-        MidGlyph(R.drawable.chrome_mid_next, onNext, 50.dp)
-        MidGlyph(R.drawable.chrome_mid_repeat, onRepeat, 44.dp)
+        MidGlyph(R.drawable.chrome_mid_next, onNext, 58.dp)
+        MidGlyph(R.drawable.chrome_mid_repeat, onRepeat, 52.dp)
     }
 }
 
@@ -354,24 +382,31 @@ private fun PorcelainOrb(res: Int, onClick: () -> Unit, size: Dp) {
 private fun BottomNav(dark: Boolean, onHome: () -> Unit, onLibrary: () -> Unit) {
     val c = MhjTheme.colors
     if (dark) {
-        // Illuminated gold icons — no heavy black capsule
+        // Board-cropped / board-lit glow glyphs — bitmap chrome, not Material vectors
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 10.dp)
-                .padding(vertical = 10.dp)
-                .drawBehind {
-                    // soft under-glow, not a capsule
-                    drawRect(
-                        brush = Brush.verticalGradient(
-                            listOf(Color.Transparent, Color(0x22D4AF37), Color.Transparent),
-                        ),
-                    )
-                },
+                .padding(bottom = 8.dp)
+                .padding(vertical = 6.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            IlluminatedNavItem(Icons.Filled.Home, "Home", true, onHome)
-            IlluminatedNavItem(Icons.Outlined.Folder, "Library", false, onLibrary)
+            Image(
+                painter = painterResource(R.drawable.chrome_mid_nav_home),
+                contentDescription = "Home",
+                modifier = Modifier
+                    .height(72.dp)
+                    .clickable(onClick = onHome),
+                contentScale = ContentScale.Fit,
+            )
+            Image(
+                painter = painterResource(R.drawable.chrome_mid_nav_library),
+                contentDescription = "Library",
+                modifier = Modifier
+                    .height(72.dp)
+                    .clickable(onClick = onLibrary),
+                contentScale = ContentScale.Fit,
+            )
         }
     } else {
         // Frosted glass bar + deeply recessed tiles
@@ -515,13 +550,13 @@ private fun GoldSeekBar(
                 cap = StrokeCap.Round,
             )
             drawCircle(
-                color = MhjColors.GoldGlow,
-                radius = 10.dp.toPx(),
+                color = MhjColors.GoldGlow.copy(alpha = 0.55f),
+                radius = 12.dp.toPx(),
                 center = Offset(x, y),
             )
             drawCircle(
                 brush = Brush.radialGradient(listOf(MhjColors.GoldHi, MhjColors.Gold)),
-                radius = 5.5.dp.toPx(),
+                radius = 6.dp.toPx(),
                 center = Offset(x, y),
             )
         }
