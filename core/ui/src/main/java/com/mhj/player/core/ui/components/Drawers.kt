@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -22,19 +23,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.AllInclusive
-import androidx.compose.material.icons.outlined.DarkMode
-import androidx.compose.material.icons.outlined.GraphicEq
-import androidx.compose.material.icons.outlined.LibraryMusic
-import androidx.compose.material.icons.outlined.NightsStay
-import androidx.compose.material.icons.outlined.Repeat
-import androidx.compose.material.icons.outlined.Speed
-import androidx.compose.material.icons.outlined.Timer
-import androidx.compose.material.icons.outlined.WbSunny
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -49,16 +37,17 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mhj.player.core.model.AppSettings
 import com.mhj.player.core.model.AppTheme
+import com.mhj.player.core.ui.R
 import com.mhj.player.core.ui.theme.MhjColors
 import com.mhj.player.core.ui.theme.MhjTheme
-import dev.chrisbanes.haze.HazeDefaults
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
@@ -75,6 +64,7 @@ fun TopMenuDrawer(
     modifier: Modifier = Modifier,
     hazeState: HazeState? = null,
 ) {
+    val dark = MhjTheme.colors.isDark
     OverlaySheet(
         visible = visible,
         fromTop = true,
@@ -93,14 +83,18 @@ fun TopMenuDrawer(
         )
         Spacer(Modifier.height(12.dp))
         MenuCard(
-            icon = Icons.Outlined.LibraryMusic,
+            iconRes = if (dark) R.drawable.icon_mid_library else R.drawable.icon_porc_library,
             title = "Browse",
             subtitle = "Music & video",
             onClick = onDismiss,
         )
         Spacer(Modifier.height(10.dp))
         MenuCard(
-            icon = if (settings.theme == AppTheme.MIDNIGHT_GOLD) Icons.Outlined.WbSunny else Icons.Outlined.DarkMode,
+            iconRes = if (settings.theme == AppTheme.MIDNIGHT_GOLD) {
+                if (dark) R.drawable.icon_mid_home else R.drawable.icon_porc_home
+            } else {
+                if (dark) R.drawable.icon_mid_night else R.drawable.icon_porc_night
+            },
             title = "Theme",
             subtitle = if (settings.theme == AppTheme.MIDNIGHT_GOLD) "Midnight Gold" else "Porcelain White",
             onClick = onToggleTheme,
@@ -122,6 +116,7 @@ fun BottomAudioDrawer(
     hazeState: HazeState? = null,
 ) {
     var showDials by remember { mutableStateOf(false) }
+    val dark = MhjTheme.colors.isDark
 
     OverlaySheet(
         visible = visible,
@@ -139,14 +134,29 @@ fun BottomAudioDrawer(
                 fontSize = 20.sp,
             )
             Spacer(Modifier.height(14.dp))
-            ToggleRow("Dialogue Clarity Boost", settings.dialogueClarity, onDialogueClarity)
-            ToggleRow("Night Mode Audio", settings.nightModeAudio, onNightMode)
+            ToggleRow(
+                iconRes = if (dark) R.drawable.icon_mid_dialogue else R.drawable.icon_porc_dialogue,
+                label = "Dialogue Clarity Boost",
+                checked = settings.dialogueClarity,
+                onChange = onDialogueClarity,
+            )
+            ToggleRow(
+                iconRes = if (dark) R.drawable.icon_mid_night else R.drawable.icon_porc_night,
+                label = "Night Mode Audio",
+                checked = settings.nightModeAudio,
+                onChange = onNightMode,
+            )
             Spacer(Modifier.height(18.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                BoardGridTile(Modifier.weight(1f), AudioGridIcon.AbLoop, "A-B", "Loop") { }
-                BoardGridTile(
+                OfficialGridTile(
                     Modifier.weight(1f),
-                    AudioGridIcon.Speed,
+                    if (dark) R.drawable.icon_mid_ab_loop else R.drawable.icon_porc_ab_loop,
+                    "A-B",
+                    "Loop",
+                ) { }
+                OfficialGridTile(
+                    Modifier.weight(1f),
+                    if (dark) R.drawable.icon_mid_speed else R.drawable.icon_porc_speed,
                     "Speed",
                     String.format("%.1fx", settings.playbackSpeed),
                 ) {
@@ -156,10 +166,16 @@ fun BottomAudioDrawer(
             }
             Spacer(Modifier.height(12.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                BoardGridTile(Modifier.weight(1f), AudioGridIcon.Equalizer, "Equalizer", "Open", onEqClick)
-                BoardGridTile(
+                OfficialGridTile(
                     Modifier.weight(1f),
-                    AudioGridIcon.Timer,
+                    if (dark) R.drawable.icon_mid_equalizer else R.drawable.icon_porc_equalizer,
+                    "Equalizer",
+                    "Open",
+                    onEqClick,
+                )
+                OfficialGridTile(
+                    Modifier.weight(1f),
+                    if (dark) R.drawable.icon_mid_timer else R.drawable.icon_porc_timer,
                     "Timer",
                     if (settings.sleepTimerMinutes == 0) "Off" else "${settings.sleepTimerMinutes}m",
                 ) {
@@ -186,6 +202,7 @@ private fun SpeedTimerDials(
     onTimerClick: () -> Unit,
 ) {
     val c = MhjTheme.colors
+    val dark = c.isDark
     Text(
         "Playback Speed",
         color = c.primary,
@@ -207,12 +224,22 @@ private fun SpeedTimerDials(
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        EmbossCircle(onClick = onSpeedClick, diameter = 40.dp) {
-            Text("−", color = c.primary, fontSize = 20.sp)
+        EmbossCircle(onClick = onSpeedClick, diameter = 44.dp) {
+            Image(
+                painter = painterResource(if (dark) R.drawable.icon_mid_minus else R.drawable.icon_porc_minus),
+                contentDescription = "Slower",
+                modifier = Modifier.size(22.dp),
+                contentScale = ContentScale.Fit,
+            )
         }
         Text("1.0x", color = c.muted, fontSize = 13.sp)
-        EmbossCircle(onClick = onSpeedClick, diameter = 40.dp) {
-            Text("+", color = c.primary, fontSize = 20.sp)
+        EmbossCircle(onClick = onSpeedClick, diameter = 44.dp) {
+            Image(
+                painter = painterResource(if (dark) R.drawable.icon_mid_plus else R.drawable.icon_porc_plus),
+                contentDescription = "Faster",
+                modifier = Modifier.size(22.dp),
+                contentScale = ContentScale.Fit,
+            )
         }
     }
     Spacer(Modifier.height(16.dp))
@@ -232,9 +259,27 @@ private fun SpeedTimerDials(
     )
     Spacer(Modifier.height(10.dp))
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        PillChip(Modifier.weight(1f), Icons.Outlined.AllInclusive, "Off", settings.sleepTimerMinutes == 0, onTimerClick)
-        PillChip(Modifier.weight(1f), Icons.Outlined.NightsStay, "At end", false, onTimerClick)
-        PillChip(Modifier.weight(1f), Icons.Outlined.Timer, "Custom", settings.sleepTimerMinutes > 0, onTimerClick)
+        BitmapPillChip(
+            Modifier.weight(1f),
+            if (dark) R.drawable.icon_mid_timer_off else R.drawable.icon_porc_timer_off,
+            "Off",
+            settings.sleepTimerMinutes == 0,
+            onTimerClick,
+        )
+        BitmapPillChip(
+            Modifier.weight(1f),
+            if (dark) R.drawable.icon_mid_stop_at_end else R.drawable.icon_porc_stop_at_end,
+            "At end",
+            false,
+            onTimerClick,
+        )
+        BitmapPillChip(
+            Modifier.weight(1f),
+            if (dark) R.drawable.icon_mid_custom_time else R.drawable.icon_porc_custom_time,
+            "Custom",
+            settings.sleepTimerMinutes > 0,
+            onTimerClick,
+        )
     }
 }
 
@@ -264,7 +309,6 @@ private fun DialCard(
             val cx = size.width / 2f
             val cy = size.height / 2f
             val radius = size.minDimension / 2f - stroke
-            // Track well
             drawArc(
                 color = c.controlFill.copy(alpha = 0.85f),
                 startAngle = 140f,
@@ -272,7 +316,6 @@ private fun DialCard(
                 useCenter = false,
                 style = Stroke(width = stroke, cap = StrokeCap.Round),
             )
-            // Gold progress with light halo underlay
             drawArc(
                 brush = Brush.radialGradient(
                     listOf(MhjColors.GoldHi.copy(alpha = 0.35f), Color.Transparent),
@@ -307,7 +350,6 @@ private fun DialCard(
                     cap = StrokeCap.Round,
                 )
             }
-            // Needle
             val nang = Math.toRadians((140.0 + 260.0 * progress.coerceIn(0f, 1f)))
             val nx = cx + cos(nang).toFloat() * (radius - 6.dp.toPx())
             val ny = cy + sin(nang).toFloat() * (radius - 6.dp.toPx())
@@ -344,14 +386,12 @@ private fun OverlaySheet(
     hazeState: HazeState? = null,
     body: @Composable ColumnScope.() -> Unit,
 ) {
-    val c = MhjTheme.colors
     val shape = RoundedCornerShape(
         topStart = if (fromTop) 0.dp else 32.dp,
         topEnd = if (fromTop) 0.dp else 32.dp,
         bottomStart = if (fromTop) 32.dp else 0.dp,
         bottomEnd = if (fromTop) 32.dp else 0.dp,
     )
-    // Light frost — avoid muddy stacked overlays; thin gold border like board
     val frostStyle = HazeStyle(
         backgroundColor = Color(0xE6101014),
         tints = listOf(
@@ -395,13 +435,11 @@ private fun OverlaySheet(
     }
 }
 
-private enum class AudioGridIcon { AbLoop, Speed, Equalizer, Timer }
-
-/** Board 2x2 tile: thin gold border + Canvas gold glyph (not Material Icons). */
+/** Audio 2x2 tile: thin gold border + official pack bitmap (no Canvas/Material substitutes). */
 @Composable
-private fun BoardGridTile(
+private fun OfficialGridTile(
     modifier: Modifier,
-    icon: AudioGridIcon,
+    iconRes: Int,
     label: String,
     value: String,
     onClick: () -> Unit,
@@ -418,97 +456,19 @@ private fun BoardGridTile(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Canvas(Modifier.size(28.dp)) {
-            val gold = MhjColors.GoldHi
-            val stroke = 2.2.dp.toPx()
-            when (icon) {
-                AudioGridIcon.AbLoop -> {
-                    // Dual horizontal arrows
-                    drawArc(
-                        color = gold,
-                        startAngle = 200f,
-                        sweepAngle = 140f,
-                        useCenter = false,
-                        topLeft = Offset(size.width * 0.12f, size.height * 0.18f),
-                        size = androidx.compose.ui.geometry.Size(size.width * 0.76f, size.height * 0.45f),
-                        style = Stroke(width = stroke, cap = StrokeCap.Round),
-                    )
-                    drawArc(
-                        color = gold,
-                        startAngle = 20f,
-                        sweepAngle = 140f,
-                        useCenter = false,
-                        topLeft = Offset(size.width * 0.12f, size.height * 0.38f),
-                        size = androidx.compose.ui.geometry.Size(size.width * 0.76f, size.height * 0.45f),
-                        style = Stroke(width = stroke, cap = StrokeCap.Round),
-                    )
-                }
-                AudioGridIcon.Speed -> {
-                    drawArc(
-                        color = gold,
-                        startAngle = 140f,
-                        sweepAngle = 260f,
-                        useCenter = false,
-                        style = Stroke(width = stroke, cap = StrokeCap.Round),
-                    )
-                    val ang = Math.toRadians(220.0)
-                    drawLine(
-                        color = gold,
-                        start = Offset(size.width / 2f, size.height / 2f),
-                        end = Offset(
-                            size.width / 2f + cos(ang).toFloat() * size.minDimension * 0.32f,
-                            size.height / 2f + sin(ang).toFloat() * size.minDimension * 0.32f,
-                        ),
-                        strokeWidth = stroke,
-                        cap = StrokeCap.Round,
-                    )
-                    drawCircle(color = gold, radius = 2.5.dp.toPx())
-                }
-                AudioGridIcon.Equalizer -> {
-                    val bars = listOf(0.35f, 0.7f, 1f, 0.55f, 0.4f)
-                    val gap = size.width / (bars.size * 1.8f)
-                    val bw = gap * 0.7f
-                    bars.forEachIndexed { i, hFrac ->
-                        val bh = size.height * 0.75f * hFrac
-                        val x = size.width * 0.12f + i * (bw + gap)
-                        drawRoundRect(
-                            color = gold,
-                            topLeft = Offset(x, size.height * 0.85f - bh),
-                            size = androidx.compose.ui.geometry.Size(bw, bh),
-                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(bw / 2f),
-                        )
-                    }
-                }
-                AudioGridIcon.Timer -> {
-                    drawCircle(
-                        color = gold,
-                        radius = size.minDimension * 0.36f,
-                        style = Stroke(width = stroke),
-                    )
-                    drawLine(
-                        color = gold,
-                        start = Offset(size.width / 2f, size.height / 2f),
-                        end = Offset(size.width / 2f, size.height * 0.28f),
-                        strokeWidth = stroke,
-                        cap = StrokeCap.Round,
-                    )
-                    drawLine(
-                        color = gold,
-                        start = Offset(size.width / 2f, size.height / 2f),
-                        end = Offset(size.width * 0.68f, size.height * 0.55f),
-                        strokeWidth = stroke,
-                        cap = StrokeCap.Round,
-                    )
-                }
-            }
-        }
+        Image(
+            painter = painterResource(iconRes),
+            contentDescription = label,
+            modifier = Modifier.size(30.dp),
+            contentScale = ContentScale.Fit,
+        )
         Text(label, color = c.primary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
         Text(value, color = c.muted, fontSize = 11.sp)
     }
 }
 
 @Composable
-private fun MenuCard(icon: ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
+private fun MenuCard(iconRes: Int, title: String, subtitle: String, onClick: () -> Unit) {
     val c = MhjTheme.colors
     Row(
         modifier = Modifier
@@ -527,7 +487,14 @@ private fun MenuCard(icon: ImageVector, title: String, subtitle: String, onClick
                 .clip(CircleShape)
                 .background(c.controlFill),
             contentAlignment = Alignment.Center,
-        ) { Icon(icon, null, tint = c.primary) }
+        ) {
+            Image(
+                painter = painterResource(iconRes),
+                contentDescription = null,
+                modifier = Modifier.size(24.dp),
+                contentScale = ContentScale.Fit,
+            )
+        }
         Column {
             Text(title, color = c.onBackground, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
             Text(subtitle, color = c.muted, fontSize = 12.sp)
@@ -536,47 +503,47 @@ private fun MenuCard(icon: ImageVector, title: String, subtitle: String, onClick
 }
 
 @Composable
-private fun ToggleRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+private fun ToggleRow(iconRes: Int, label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    val dark = MhjTheme.colors.isDark
     Row(
         Modifier.fillMaxWidth().padding(vertical = 7.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, color = MhjTheme.colors.onBackground, fontSize = 14.sp)
-        Switch(
-            checked = checked,
-            onCheckedChange = onChange,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = MhjColors.GoldHi,
-                checkedTrackColor = MhjColors.Gold.copy(alpha = 0.55f),
-                uncheckedThumbColor = MhjTheme.colors.muted,
-                uncheckedTrackColor = MhjTheme.colors.recess,
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.weight(1f),
+        ) {
+            Image(
+                painter = painterResource(iconRes),
+                contentDescription = null,
+                modifier = Modifier.size(22.dp),
+                contentScale = ContentScale.Fit,
+            )
+            Text(label, color = MhjTheme.colors.onBackground, fontSize = 14.sp)
+        }
+        Image(
+            painter = painterResource(
+                if (checked) {
+                    if (dark) R.drawable.icon_mid_switch_on else R.drawable.icon_porc_switch_on
+                } else {
+                    if (dark) R.drawable.icon_mid_switch_off else R.drawable.icon_porc_switch_off
+                },
             ),
+            contentDescription = if (checked) "On" else "Off",
+            modifier = Modifier
+                .size(width = 52.dp, height = 32.dp)
+                .clickable { onChange(!checked) },
+            contentScale = ContentScale.Fit,
         )
     }
 }
 
 @Composable
-private fun GridTile(
+private fun BitmapPillChip(
     modifier: Modifier,
-    icon: ImageVector,
-    label: String,
-    value: String,
-    onClick: () -> Unit,
-) {
-    EmbossTile(onClick = onClick, modifier = modifier.height(108.dp)) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Icon(icon, null, tint = MhjTheme.colors.primary, modifier = Modifier.size(26.dp))
-            Text(label, color = MhjTheme.colors.onBackground, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-            Text(value, color = MhjTheme.colors.muted, fontSize = 11.sp)
-        }
-    }
-}
-
-@Composable
-private fun PillChip(
-    modifier: Modifier,
-    icon: ImageVector,
+    iconRes: Int,
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
@@ -595,7 +562,12 @@ private fun PillChip(
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, null, tint = if (selected) c.primary else c.muted, modifier = Modifier.size(16.dp))
+        Image(
+            painter = painterResource(iconRes),
+            contentDescription = null,
+            modifier = Modifier.size(16.dp),
+            contentScale = ContentScale.Fit,
+        )
         Spacer(Modifier.size(6.dp))
         Text(label, color = if (selected) c.primary else c.muted, fontSize = 12.sp)
     }

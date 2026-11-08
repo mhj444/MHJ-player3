@@ -44,7 +44,6 @@ import com.mhj.player.core.ui.R
 import com.mhj.player.core.ui.components.BrandLogoHeader
 import com.mhj.player.core.ui.components.EqualizerVisualizer
 import com.mhj.player.core.ui.components.softEmboss
-import com.mhj.player.core.ui.components.softGoldHalo
 import com.mhj.player.core.ui.theme.MhjColors
 import com.mhj.player.core.ui.theme.MhjTheme
 import kotlin.math.roundToLong
@@ -76,42 +75,14 @@ fun MusicPlayerScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Spacer(Modifier.height(2.dp))
-        if (dark) {
-            // Board-cropped header strip (logo + arcs + orb wells) with tap targets
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(72.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Image(
-                    painter = painterResource(R.drawable.chrome_mid_header_strip),
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.FillWidth,
-                )
-                Row(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(
-                        Modifier
-                            .size(56.dp)
-                            .clickable(onClick = onOpenTopMenu),
-                    )
-                    Spacer(Modifier.weight(1f))
-                    Box(Modifier.size(56.dp))
-                }
-            }
-        } else {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                HeaderChrome(onClick = onOpenTopMenu, dark = dark, left = true)
-                BrandLogoHeader(modifier = Modifier.weight(1f))
-                HeaderChrome(onClick = { }, dark = dark, left = false)
-            }
+        // Official pack header icons (EQ / cast) flanking brand logo — no reconstructed strip orbs
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            HeaderChrome(onClick = onOpenTopMenu, dark = dark, left = true)
+            BrandLogoHeader(modifier = Modifier.weight(1f))
+            HeaderChrome(onClick = { }, dark = dark, left = false)
         }
 
         Spacer(Modifier.height(if (dark) 4.dp else 10.dp))
@@ -232,28 +203,25 @@ fun MusicPlayerScreen(
 @Composable
 private fun HeaderChrome(onClick: () -> Unit, dark: Boolean, left: Boolean) {
     val res = when {
-        dark && left -> R.drawable.chrome_mid_orb_eq
-        dark && !left -> R.drawable.chrome_mid_orb_cast
-        !dark && left -> R.drawable.chrome_porc_tile_eq
-        else -> R.drawable.chrome_porc_tile_cast
+        dark && left -> R.drawable.icon_mid_equalizer
+        dark && !left -> R.drawable.icon_mid_cast
+        !dark && left -> R.drawable.icon_porc_equalizer
+        else -> R.drawable.icon_porc_cast
     }
     Image(
         painter = painterResource(res),
         contentDescription = null,
         modifier = Modifier
-            .size(if (dark) 44.dp else 48.dp)
+            .size(if (dark) 36.dp else 40.dp)
             .clickable(onClick = onClick),
         contentScale = ContentScale.Fit,
     )
 }
 
-/**
- * Midnight transport: feedback/board cropped bitmaps only.
- * No softGoldHalo glow tiles, no Material triangle, no ribbon tabs.
- */
+/** Midnight transport: official MHJ icon pack bitmaps (PNG-512). */
 @Composable
 private fun MidnightTransport(
-    @Suppress("UNUSED_PARAMETER") state: PlayerUiState,
+    state: PlayerUiState,
     onPlayPause: () -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
@@ -265,19 +233,20 @@ private fun MidnightTransport(
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        MidGlyph(R.drawable.chrome_mid_shuffle, onShuffle, 44.dp)
-        MidGlyph(R.drawable.chrome_mid_prev, onPrevious, 48.dp)
-        // Gold-glass ring + pause/play from feedback crop
+        MidGlyph(R.drawable.icon_mid_shuffle, onShuffle, 44.dp)
+        MidGlyph(R.drawable.icon_mid_prev, onPrevious, 48.dp)
         Image(
-            painter = painterResource(R.drawable.chrome_mid_play),
+            painter = painterResource(
+                if (state.isPlaying) R.drawable.icon_mid_pause else R.drawable.icon_mid_play,
+            ),
             contentDescription = "Play pause",
             modifier = Modifier
-                .size(92.dp)
+                .size(72.dp)
                 .clickable(onClick = onPlayPause),
             contentScale = ContentScale.Fit,
         )
-        MidGlyph(R.drawable.chrome_mid_next, onNext, 48.dp)
-        MidGlyph(R.drawable.chrome_mid_repeat, onRepeat, 44.dp)
+        MidGlyph(R.drawable.icon_mid_next, onNext, 48.dp)
+        MidGlyph(R.drawable.icon_mid_repeat, onRepeat, 44.dp)
     }
 }
 
@@ -308,26 +277,20 @@ private fun PorcelainTransport(
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        PorcelainOrb(R.drawable.chrome_porc_shuffle, onShuffle, 50.dp)
-        PorcelainOrb(R.drawable.chrome_porc_prev, onPrevious, 54.dp)
-        Box(
+        PorcelainOrb(R.drawable.icon_porc_shuffle, onShuffle, 48.dp)
+        PorcelainOrb(R.drawable.icon_porc_prev, onPrevious, 52.dp)
+        Image(
+            painter = painterResource(
+                if (state.isPlaying) R.drawable.icon_porc_pause else R.drawable.icon_porc_play,
+            ),
+            contentDescription = "Play pause",
             modifier = Modifier
-                .size(78.dp)
-                .softGoldHalo(39.dp, bloom = 14.dp, intensity = 0.4f)
+                .size(64.dp)
                 .clickable(onClick = onPlayPause),
-            contentAlignment = Alignment.Center,
-        ) {
-            Image(
-                painter = painterResource(
-                    if (state.isPlaying) R.drawable.chrome_porc_play else R.drawable.chrome_porc_play_tri,
-                ),
-                contentDescription = "Play pause",
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Fit,
-            )
-        }
-        PorcelainOrb(R.drawable.chrome_porc_next, onNext, 54.dp)
-        PorcelainOrb(R.drawable.chrome_porc_repeat, onRepeat, 50.dp)
+            contentScale = ContentScale.Fit,
+        )
+        PorcelainOrb(R.drawable.icon_porc_next, onNext, 52.dp)
+        PorcelainOrb(R.drawable.icon_porc_repeat, onRepeat, 48.dp)
     }
 }
 
@@ -338,7 +301,6 @@ private fun PorcelainOrb(res: Int, onClick: () -> Unit, size: Dp) {
         contentDescription = null,
         modifier = Modifier
             .size(size)
-            .softGoldHalo(size / 2, bloom = 10.dp, intensity = 0.35f)
             .clickable(onClick = onClick),
         contentScale = ContentScale.Fit,
     )
@@ -357,22 +319,34 @@ private fun BottomNav(dark: Boolean, onHome: () -> Unit, onLibrary: () -> Unit) 
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Image(
-                painter = painterResource(R.drawable.chrome_mid_nav_home),
-                contentDescription = "Home",
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
-                    .height(64.dp)
-                    .clickable(onClick = onHome),
-                contentScale = ContentScale.Fit,
-            )
-            Image(
-                painter = painterResource(R.drawable.chrome_mid_nav_library),
-                contentDescription = "Library",
+                    .clickable(onClick = onHome)
+                    .padding(horizontal = 20.dp, vertical = 6.dp),
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.icon_mid_home_active),
+                    contentDescription = "Home",
+                    modifier = Modifier.size(36.dp),
+                    contentScale = ContentScale.Fit,
+                )
+                Text("Home", color = MhjColors.GoldHi, fontSize = 11.sp, fontFamily = FontFamily.Serif)
+            }
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
-                    .height(64.dp)
-                    .clickable(onClick = onLibrary),
-                contentScale = ContentScale.Fit,
-            )
+                    .clickable(onClick = onLibrary)
+                    .padding(horizontal = 20.dp, vertical = 6.dp),
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.icon_mid_library),
+                    contentDescription = "Library",
+                    modifier = Modifier.size(36.dp),
+                    contentScale = ContentScale.Fit,
+                )
+                Text("Library", color = MhjColors.Gold.copy(alpha = 0.85f), fontSize = 11.sp, fontFamily = FontFamily.Serif)
+            }
         }
     } else {
         // Frosted porcelain nav — bitmap home/library marks from boards/feedback
@@ -398,22 +372,28 @@ private fun BottomNav(dark: Boolean, onHome: () -> Unit, onLibrary: () -> Unit) 
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Image(
-                    painter = painterResource(R.drawable.chrome_porc_nav_home),
-                    contentDescription = "Home",
-                    modifier = Modifier
-                        .height(64.dp)
-                        .clickable(onClick = onHome),
-                    contentScale = ContentScale.Fit,
-                )
-                Image(
-                    painter = painterResource(R.drawable.chrome_porc_nav_library),
-                    contentDescription = "Library",
-                    modifier = Modifier
-                        .height(64.dp)
-                        .clickable(onClick = onLibrary),
-                    contentScale = ContentScale.Fit,
-                )
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Image(
+                        painter = painterResource(R.drawable.icon_porc_home_active),
+                        contentDescription = "Home",
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clickable(onClick = onHome),
+                        contentScale = ContentScale.Fit,
+                    )
+                    Text("Home", color = c.primary, fontSize = 11.sp, fontFamily = FontFamily.Serif)
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Image(
+                        painter = painterResource(R.drawable.icon_porc_library),
+                        contentDescription = "Library",
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clickable(onClick = onLibrary),
+                        contentScale = ContentScale.Fit,
+                    )
+                    Text("Library", color = c.muted, fontSize = 11.sp, fontFamily = FontFamily.Serif)
+                }
             }
         }
     }

@@ -17,15 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Fullscreen
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.outlined.ClosedCaption
-import androidx.compose.material.icons.outlined.Forward10
-import androidx.compose.material.icons.outlined.Headphones
-import androidx.compose.material.icons.outlined.Replay10
-import androidx.compose.material3.Icon
+import androidx.compose.foundation.Image
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
@@ -37,7 +29,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -46,6 +40,7 @@ import androidx.media3.common.Player
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.mhj.player.core.model.PlayerUiState
+import com.mhj.player.core.ui.R
 import com.mhj.player.core.ui.components.softEmboss
 import com.mhj.player.core.ui.theme.MhjColors
 import com.mhj.player.core.ui.theme.MhjTheme
@@ -135,20 +130,32 @@ fun VideoPlayerScreen(
                     .padding(horizontal = 12.dp, vertical = 10.dp),
             ) {
                 GlassOrb(42.dp, onPlayPause) {
-                    Icon(
-                        if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                    Image(
+                        painter = painterResource(
+                            if (state.isPlaying) R.drawable.icon_mid_pause else R.drawable.icon_mid_play,
+                        ),
                         contentDescription = "Play pause",
-                        tint = MhjColors.GoldHi,
                         modifier = Modifier.size(22.dp),
+                        contentScale = ContentScale.Fit,
                     )
                 }
                 Spacer(Modifier.width(6.dp))
                 GlassOrb(36.dp, { onSeekBy(-10_000) }) {
-                    Icon(Icons.Outlined.Replay10, null, tint = MhjColors.Gold, modifier = Modifier.size(18.dp))
+                    Image(
+                        painter = painterResource(R.drawable.icon_mid_rewind_10),
+                        contentDescription = "Rewind 10",
+                        modifier = Modifier.size(18.dp),
+                        contentScale = ContentScale.Fit,
+                    )
                 }
                 Spacer(Modifier.width(4.dp))
                 GlassOrb(36.dp, { onSeekBy(10_000) }) {
-                    Icon(Icons.Outlined.Forward10, null, tint = MhjColors.Gold, modifier = Modifier.size(18.dp))
+                    Image(
+                        painter = painterResource(R.drawable.icon_mid_forward_10),
+                        contentDescription = "Forward 10",
+                        modifier = Modifier.size(18.dp),
+                        contentScale = ContentScale.Fit,
+                    )
                 }
 
                 val duration = state.durationMs.coerceAtLeast(0L)
@@ -170,11 +177,21 @@ fun VideoPlayerScreen(
                 )
                 Spacer(Modifier.width(6.dp))
                 GlassOrb(34.dp, onOpenBottomMenu) {
-                    Icon(Icons.Outlined.ClosedCaption, null, tint = MhjColors.Gold, modifier = Modifier.size(16.dp))
+                    Image(
+                        painter = painterResource(R.drawable.icon_mid_cc),
+                        contentDescription = "Captions",
+                        modifier = Modifier.size(16.dp),
+                        contentScale = ContentScale.Fit,
+                    )
                 }
                 Spacer(Modifier.width(4.dp))
                 GlassOrb(34.dp, onOpenBottomMenu) {
-                    Icon(Icons.Outlined.Headphones, null, tint = MhjColors.Gold, modifier = Modifier.size(16.dp))
+                    Image(
+                        painter = painterResource(R.drawable.icon_mid_speaker),
+                        contentDescription = "Audio",
+                        modifier = Modifier.size(16.dp),
+                        contentScale = ContentScale.Fit,
+                    )
                 }
                 Spacer(Modifier.width(6.dp))
                 Text(
@@ -188,7 +205,12 @@ fun VideoPlayerScreen(
                         .padding(horizontal = 6.dp, vertical = 4.dp),
                 )
                 Spacer(Modifier.width(4.dp))
-                Icon(Icons.Filled.Fullscreen, null, tint = MhjColors.Gold, modifier = Modifier.size(20.dp))
+                Image(
+                    painter = painterResource(R.drawable.icon_mid_fullscreen),
+                    contentDescription = "Fullscreen",
+                    modifier = Modifier.size(20.dp),
+                    contentScale = ContentScale.Fit,
+                )
             }
         }
     }
