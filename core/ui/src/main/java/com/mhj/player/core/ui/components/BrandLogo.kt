@@ -2,10 +2,13 @@ package com.mhj.player.core.ui.components
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -13,7 +16,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -22,12 +24,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mhj.player.core.ui.R
-import com.mhj.player.core.ui.theme.MhjColors
 import com.mhj.player.core.ui.theme.MhjTheme
 
 /**
- * Centered header mark using the cropped raw MHJ logo (not the tall source canvas).
- * Theme picks transparent gold mark on light, midnight plate on dark.
+ * Board-faithful centered brand header:
+ * metallic MHJ mark (flame + headphones) + "MHJ Player" with flanking rules.
  */
 @Composable
 fun BrandLogoHeader(
@@ -35,66 +36,58 @@ fun BrandLogoHeader(
     showWordmark: Boolean = true,
 ) {
     val colors = MhjTheme.colors
-    val logoRes = if (colors.isDark) {
-        R.drawable.logo_mhj_raw
-    } else {
-        R.drawable.logo_mhj_raw
-    }
-
     Column(
         modifier = modifier
             .fillMaxWidth()
             .padding(vertical = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(2.dp),
+        verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
         Image(
-            painter = painterResource(id = logoRes),
+            painter = painterResource(
+                id = if (colors.isDark) R.drawable.logo_mhj_header_night else R.drawable.logo_mhj_header,
+            ),
             contentDescription = "MHJ",
             modifier = Modifier
-                .height(46.dp)
-                .widthIn(max = 168.dp)
-                .fillMaxWidth(0.46f),
+                .height(58.dp)
+                .widthIn(max = 172.dp)
+                .fillMaxWidth(0.48f),
             contentScale = ContentScale.Fit,
         )
         if (showWordmark) {
-            Text(
-                text = "MHJ Player",
-                color = colors.primary,
-                fontSize = 13.sp,
-                fontFamily = FontFamily.Serif,
-                fontWeight = FontWeight.Medium,
-                letterSpacing = 1.6.sp,
-            )
-            // Decorative gold arch under wordmark (mockup cue)
-            androidx.compose.foundation.layout.Box(
-                modifier = Modifier
-                    .padding(top = 2.dp)
-                    .height(10.dp)
-                    .fillMaxWidth(0.28f)
-                    .drawBehind {
-                        val stroke = 2.2.dp.toPx()
-                        drawArc(
-                            brush = Brush.horizontalGradient(
-                                listOf(
-                                    MhjColors.GoldDeep.copy(alpha = 0.15f),
-                                    MhjColors.GoldBright,
-                                    MhjColors.Gold,
-                                    MhjColors.GoldDeep.copy(alpha = 0.15f),
-                                ),
-                            ),
-                            startAngle = 200f,
-                            sweepAngle = 140f,
-                            useCenter = false,
-                            topLeft = Offset(0f, -size.height),
-                            size = androidx.compose.ui.geometry.Size(size.width, size.height * 2.4f),
-                            style = androidx.compose.ui.graphics.drawscope.Stroke(
-                                width = stroke,
-                                cap = StrokeCap.Round,
-                            ),
-                        )
-                    },
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.padding(top = 2.dp),
+            ) {
+                Hairline(Modifier.width(28.dp), colors.primary.copy(alpha = 0.55f))
+                Text(
+                    text = "MHJ Player",
+                    color = colors.primary,
+                    fontSize = 12.sp,
+                    fontFamily = FontFamily.Serif,
+                    fontWeight = FontWeight.Medium,
+                    letterSpacing = 1.4.sp,
+                )
+                Hairline(Modifier.width(28.dp), colors.primary.copy(alpha = 0.55f))
+            }
         }
     }
+}
+
+@Composable
+private fun Hairline(modifier: Modifier, color: androidx.compose.ui.graphics.Color) {
+    Box(
+        modifier = modifier
+            .height(1.dp)
+            .drawBehind {
+                drawLine(
+                    color = color,
+                    start = Offset(0f, size.height / 2f),
+                    end = Offset(size.width, size.height / 2f),
+                    strokeWidth = 1.2.dp.toPx(),
+                    cap = StrokeCap.Round,
+                )
+            },
+    )
 }

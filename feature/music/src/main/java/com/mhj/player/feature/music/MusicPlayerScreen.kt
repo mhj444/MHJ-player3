@@ -1,5 +1,6 @@
 package com.mhj.player.feature.music
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
@@ -27,9 +29,7 @@ import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.outlined.Cast
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.GraphicEq
-import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
@@ -37,24 +37,30 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mhj.player.core.model.PlayerUiState
 import com.mhj.player.core.model.RepeatMode
+import com.mhj.player.core.ui.R
 import com.mhj.player.core.ui.components.BrandLogoHeader
-import com.mhj.player.core.ui.components.EmbossedCircle
+import com.mhj.player.core.ui.components.EmbossCircle
 import com.mhj.player.core.ui.components.EqualizerVisualizer
-import com.mhj.player.core.ui.components.GlassPanel
-import com.mhj.player.core.ui.components.goldRim
-import com.mhj.player.core.ui.components.innerGoldGlow
-import com.mhj.player.core.ui.components.neumorphRaised
+import com.mhj.player.core.ui.components.FrostPanel
+import com.mhj.player.core.ui.components.softEmboss
+import com.mhj.player.core.ui.components.softGoldHairline
+import com.mhj.player.core.ui.components.softInset
 import com.mhj.player.core.ui.theme.MhjColors
 import com.mhj.player.core.ui.theme.MhjTheme
 
@@ -71,9 +77,9 @@ fun MusicPlayerScreen(
     onOpenBottomMenu: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val colors = MhjTheme.colors
-    val title = state.current?.title ?: "MHJ Player"
-    val artist = state.current?.artist ?: "Ready when you are"
+    val c = MhjTheme.colors
+    val title = state.current?.title ?: "The Last Kingdom"
+    val artist = state.current?.artist ?: "Ramin Djawadi"
     val duration = state.durationMs.coerceAtLeast(0L)
     val position = state.positionMs.coerceIn(0L, if (duration > 0) duration else Long.MAX_VALUE)
 
@@ -83,253 +89,236 @@ fun MusicPlayerScreen(
             .padding(horizontal = 22.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-            Spacer(Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(onClick = onOpenTopMenu) {
-                    Icon(Icons.Outlined.Tune, contentDescription = "Menu", tint = colors.primary)
-                }
-                BrandLogoHeader(modifier = Modifier.weight(1f))
-                IconButton(onClick = { /* Cast — Phase 5 */ }) {
-                    Icon(
-                        Icons.Outlined.Cast,
-                        contentDescription = "Cast",
-                        tint = colors.primary.copy(alpha = 0.55f),
-                    )
-                }
+        Spacer(Modifier.height(4.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            HeaderOrb(onClick = onOpenTopMenu) {
+                Icon(Icons.Outlined.GraphicEq, null, tint = c.primary, modifier = Modifier.size(17.dp))
             }
+            BrandLogoHeader(modifier = Modifier.weight(1f))
+            HeaderOrb(onClick = { }) {
+                Icon(Icons.Outlined.Cast, null, tint = c.primary.copy(alpha = 0.75f), modifier = Modifier.size(17.dp))
+            }
+        }
 
-            Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(10.dp))
 
-            // Embossed album well + gold-rimmed art frame
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(0.86f)
-                    .aspectRatio(1f)
-                    .neumorphRaised(
-                        shapeRadius = 30.dp,
-                        light = colors.lightShadow,
-                        dark = colors.darkShadow,
-                        elevation = 16.dp,
-                    )
-                    .clip(RoundedCornerShape(30.dp))
-                    .background(
-                        Brush.linearGradient(
-                            listOf(colors.elevated, colors.surface, colors.recess),
+        // Board album frame: soft emboss well + gold hairline + art
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.82f)
+                .aspectRatio(1f)
+                .drawBehind {
+                    // soft gold bloom behind frame (board glow) — keep subtle
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            listOf(c.glow.copy(alpha = 0.35f), Color.Transparent),
+                            center = Offset(size.width / 2f, size.height / 2f),
+                            radius = size.minDimension * 0.58f,
                         ),
-                    )
-                    .goldRim(radius = 30.dp, alpha = 0.95f)
-                    .innerGoldGlow(radius = 30.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(12.dp)
-                        .neumorphRaised(
-                            shapeRadius = 22.dp,
-                            light = colors.lightShadow,
-                            dark = colors.darkShadow,
-                            elevation = 8.dp,
-                        )
-                        .clip(RoundedCornerShape(22.dp))
-                        .background(
-                            Brush.radialGradient(
-                                listOf(
-                                    if (colors.isDark) Color(0xFF3A2E18) else Color(0xFFF0E6D8),
-                                    if (colors.isDark) Color(0xFF14100A) else Color(0xFFD9CFC0),
-                                ),
-                            ),
-                        )
-                        .border(
-                            width = 1.4.dp,
-                            brush = MhjColors.MetallicGold,
-                            shape = RoundedCornerShape(22.dp),
-                        ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.GraphicEq,
-                        contentDescription = null,
-                        tint = colors.primary.copy(alpha = 0.55f),
-                        modifier = Modifier.size(78.dp),
+                        radius = size.minDimension * 0.58f,
                     )
                 }
-            }
-
-            Spacer(Modifier.height(20.dp))
-
-            Text(
-                text = title,
-                color = colors.onBackground,
-                fontSize = 24.sp,
-                fontFamily = FontFamily.Serif,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = artist,
-                color = colors.muted,
-                fontSize = 14.sp,
-                fontFamily = FontFamily.SansSerif,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-
-            Spacer(Modifier.height(12.dp))
-            EqualizerVisualizer(
-                active = state.isPlaying,
+                .softEmboss(30.dp, c.lightShadow, c.darkShadow, 10.dp)
+                .softInset(30.dp, c.lightShadow, c.darkShadow)
+                .clip(RoundedCornerShape(30.dp))
+                .background(Brush.verticalGradient(listOf(c.elevated, c.recess)))
+                .softGoldHairline(30.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Image(
+                painter = painterResource(id = R.drawable.demo_album_art),
+                contentDescription = null,
                 modifier = Modifier
-                    .fillMaxWidth(0.9f)
-                    .padding(horizontal = 6.dp),
+                    .fillMaxSize()
+                    .padding(10.dp)
+                    .clip(RoundedCornerShape(22.dp))
+                    .border(1.4.dp, MhjColors.GoldMetal, RoundedCornerShape(22.dp)),
+                contentScale = ContentScale.Crop,
             )
+        }
 
-            Spacer(Modifier.height(6.dp))
-            Slider(
-                value = if (duration > 0) position.toFloat() / duration.toFloat() else 0f,
-                onValueChange = { ratio ->
-                    if (duration > 0) onSeek((ratio * duration).toLong())
-                },
-                modifier = Modifier.fillMaxWidth(),
-                colors = SliderDefaults.colors(
-                    thumbColor = MhjColors.GoldBright,
-                    activeTrackColor = MhjColors.Gold,
-                    inactiveTrackColor = colors.controlFill,
-                ),
+        Spacer(Modifier.height(16.dp))
+
+        Text(
+            text = title,
+            color = if (c.isDark) Color.White else c.onBackground,
+            fontSize = 22.sp,
+            fontFamily = FontFamily.Serif,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text = artist,
+            color = if (c.isDark) MhjColors.GoldHi.copy(alpha = 0.85f) else c.muted,
+            fontSize = 13.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+
+        Spacer(Modifier.height(8.dp))
+        EqualizerVisualizer(
+            active = state.isPlaying,
+            modifier = Modifier.fillMaxWidth(0.9f),
+        )
+
+        Spacer(Modifier.height(2.dp))
+        Slider(
+            value = if (duration > 0) position.toFloat() / duration else 0f,
+            onValueChange = { if (duration > 0) onSeek((it * duration).toLong()) },
+            modifier = Modifier.fillMaxWidth(),
+            colors = SliderDefaults.colors(
+                thumbColor = MhjColors.GoldHi,
+                activeTrackColor = MhjColors.GoldTrack,
+                inactiveTrackColor = c.controlFill,
+            ),
+        )
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 2.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(formatTime(position), color = c.muted, fontSize = 11.sp)
+            Text(formatTime(duration), color = c.muted, fontSize = 11.sp)
+        }
+
+        Spacer(Modifier.height(10.dp))
+
+        // Board transport: five circular glass/embossed controls
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TransportOrb(Icons.Filled.Shuffle, state.shuffle, onShuffle, 46.dp)
+            TransportOrb(Icons.Filled.SkipPrevious, true, onPrevious, 50.dp, iconSize = 22.dp)
+            EmbossCircle(
+                onClick = onPlayPause,
+                diameter = 74.dp,
+                filledGold = !c.isDark,
+                ringGold = true,
+            ) {
+                Icon(
+                    if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                    contentDescription = "Play pause",
+                    tint = if (c.isDark) MhjColors.GoldHi else Color(0xFF2A2118),
+                    modifier = Modifier.size(34.dp),
+                )
+            }
+            TransportOrb(Icons.Filled.SkipNext, true, onNext, 50.dp, iconSize = 22.dp)
+            TransportOrb(
+                if (state.repeatMode == RepeatMode.ONE) Icons.Filled.RepeatOne else Icons.Filled.Repeat,
+                state.repeatMode != RepeatMode.OFF,
+                onRepeat,
+                46.dp,
             )
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text(formatTime(position), color = colors.muted, fontSize = 12.sp)
-                Text(formatTime(duration), color = colors.muted, fontSize = 12.sp)
-            }
+        }
 
-            Spacer(Modifier.height(10.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                EmbossedCircle(
-                    onClick = onShuffle,
-                    diameter = 46.dp,
-                ) {
-                    Icon(
-                        Icons.Filled.Shuffle,
-                        contentDescription = "Shuffle",
-                        tint = if (state.shuffle) colors.primary else colors.muted,
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
-                EmbossedCircle(onClick = onPrevious, diameter = 54.dp) {
-                    Icon(
-                        Icons.Filled.SkipPrevious,
-                        contentDescription = "Previous",
-                        tint = colors.primary,
-                        modifier = Modifier.size(28.dp),
-                    )
-                }
-                EmbossedCircle(onClick = onPlayPause, diameter = 74.dp, filledGold = true) {
-                    Icon(
-                        imageVector = if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                        contentDescription = "Play pause",
-                        tint = if (colors.isDark) Color(0xFF111111) else Color(0xFF2A2116),
-                        modifier = Modifier.size(36.dp),
-                    )
-                }
-                EmbossedCircle(onClick = onNext, diameter = 54.dp) {
-                    Icon(
-                        Icons.Filled.SkipNext,
-                        contentDescription = "Next",
-                        tint = colors.primary,
-                        modifier = Modifier.size(28.dp),
-                    )
-                }
-                EmbossedCircle(onClick = onRepeat, diameter = 46.dp) {
-                    Icon(
-                        imageVector = if (state.repeatMode == RepeatMode.ONE) {
-                            Icons.Filled.RepeatOne
-                        } else {
-                            Icons.Filled.Repeat
-                        },
-                        contentDescription = "Repeat",
-                        tint = if (state.repeatMode != RepeatMode.OFF) colors.primary else colors.muted,
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
-            }
+        Spacer(Modifier.weight(1f))
 
-            Spacer(Modifier.weight(1f))
-
-            GlassPanel(
+        FrostPanel(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 16.dp),
-            radius = 24.dp,
+                .padding(bottom = 12.dp),
+            radius = 28.dp,
         ) {
             Row(
-                modifier = Modifier
+                Modifier
                     .fillMaxWidth()
                     .padding(vertical = 12.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
             ) {
-                NavChip(icon = Icons.Filled.Home, label = "Home", selected = true, onClick = {})
-                NavChip(
-                    icon = Icons.Outlined.Folder,
-                    label = "Library",
-                    selected = false,
-                    onClick = onOpenTopMenu,
-                )
+                NavItem(Icons.Filled.Home, "Home", true, onOpenBottomMenu)
+                NavItem(Icons.Outlined.Folder, "Library", false, onOpenTopMenu)
             }
         }
     }
 }
 
 @Composable
-private fun NavChip(
+private fun HeaderOrb(onClick: () -> Unit, content: @Composable () -> Unit) {
+    val c = MhjTheme.colors
+    Box(
+        modifier = Modifier
+            .size(42.dp)
+            .softEmboss(21.dp, c.lightShadow, c.darkShadow, 9.dp)
+            .clip(CircleShape)
+            .background(Brush.verticalGradient(listOf(c.elevated, c.surface)))
+            .border(
+                width = 1.dp,
+                brush = Brush.linearGradient(
+                    listOf(c.lightShadow.copy(alpha = 0.7f), c.darkShadow.copy(alpha = 0.2f)),
+                ),
+                shape = CircleShape,
+            )
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { content() }
+}
+
+@Composable
+private fun TransportOrb(
+    icon: ImageVector,
+    active: Boolean,
+    onClick: () -> Unit,
+    diameter: Dp,
+    iconSize: Dp = 18.dp,
+) {
+    EmbossCircle(
+        onClick = onClick,
+        diameter = diameter,
+        ringGold = active,
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = if (active) MhjTheme.colors.primary else MhjTheme.colors.muted,
+            modifier = Modifier.size(iconSize),
+        )
+    }
+}
+
+@Composable
+private fun NavItem(
     icon: ImageVector,
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
 ) {
-    val colors = MhjTheme.colors
+    val c = MhjTheme.colors
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
             .clip(RoundedCornerShape(14.dp))
             .then(
                 if (selected) {
-                    Modifier.background(colors.controlFill, RoundedCornerShape(14.dp))
+                    Modifier
+                        .softEmboss(14.dp, c.lightShadow, c.darkShadow, 6.dp)
+                        .background(c.controlFill, RoundedCornerShape(14.dp))
                 } else {
                     Modifier
                 },
             )
             .clickable(onClick = onClick)
-            .padding(horizontal = 22.dp, vertical = 6.dp),
+            .padding(horizontal = 22.dp, vertical = 4.dp),
     ) {
-        Icon(icon, contentDescription = label, tint = if (selected) colors.primary else colors.muted)
+        Icon(icon, label, tint = if (selected) c.primary else c.muted)
         Text(
-            text = label,
-            color = if (selected) colors.primary else colors.muted,
+            label,
+            color = if (selected) c.primary else c.muted,
             fontSize = 11.sp,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            fontFamily = FontFamily.Serif,
         )
     }
 }
 
 private fun formatTime(ms: Long): String {
     if (ms <= 0L) return "0:00"
-    val totalSec = ms / 1000
-    val m = totalSec / 60
-    val s = totalSec % 60
-    return "%d:%02d".format(m, s)
+    val total = ms / 1000
+    return "%d:%02d".format(total / 60, total % 60)
 }

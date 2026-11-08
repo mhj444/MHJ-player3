@@ -4,38 +4,39 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 
 object MhjColors {
-    val GoldBright = Color(0xFFF0D78C)
+    // Metallic gold (boards)
+    val GoldHi = Color(0xFFF2E0A8)
     val Gold = Color(0xFFD4AF37)
-    val GoldDeep = Color(0xFFB8860B)
-    val GoldMuted = Color(0xFFA67C52)
-    val GoldSoft = Color(0xFFC9A96E)
+    val GoldMid = Color(0xFFC9A227)
+    val GoldLo = Color(0xFF9A7420)
     val GoldGlow = Color(0x66E8C547)
-    val GoldOrange = Color(0xFFE8A03C)
+    val GoldTrack = Color(0xFFE0B84A)
 
-    val MidnightBg = Color(0xFF050505)
-    val MidnightSurface = Color(0xFF101010)
-    val MidnightElevated = Color(0xFF1A1A1A)
-    val MidnightRecess = Color(0xFF080808)
-    val MidnightGlass = Color(0xD9141414)
-    val MidnightHighlight = Color(0x33FFFFFF)
-    val MidnightShadow = Color(0xCC000000)
+    // Midnight
+    val NightBg = Color(0xFF070707)
+    val NightSurface = Color(0xFF121212)
+    val NightElevated = Color(0xFF1C1C1C)
+    val NightRecess = Color(0xFF0A0A0A)
+    val NightGlass = Color(0xCC161616)
+    val NightText = Color(0xFFF5F5F5)
+    val NightMuted = Color(0xFFB8A57A)
+    val NightLight = Color(0x33D4AF37)
+    val NightDark = Color(0x66000000)
 
-    val PorcelainBg = Color(0xFFF5EFE6)
-    val PorcelainSurface = Color(0xFFF8F3ED)
-    val PorcelainElevated = Color(0xFFFFFBF6)
-    val PorcelainRecess = Color(0xFFE8DFD2)
-    val PorcelainGlass = Color(0xE6F7F1E8)
-    val PorcelainInk = Color(0xFF2F261C)
-    val PorcelainMuted = Color(0xFF7A6A55)
-    val PorcelainHighlight = Color(0xFFFFFFFF)
-    val PorcelainShadow = Color(0x33A0896A)
+    // Porcelain
+    val PorcBg = Color(0xFFF4EEE6)
+    val PorcSurface = Color(0xFFF7F1E9)
+    val PorcElevated = Color(0xFFFFFBF6)
+    val PorcRecess = Color(0xFFE6DDD1)
+    val PorcGlass = Color(0xE6F8F2EA)
+    val PorcInk = Color(0xFF2C241C)
+    val PorcMuted = Color(0xFF8A7A66)
+    val PorcLight = Color(0xCCFFFFFF)
+    val PorcDark = Color(0x338B7355)
 
-    val MetallicGold = Brush.linearGradient(
-        listOf(GoldBright, Gold, GoldDeep, Gold),
-    )
-    val MetallicGoldVertical = Brush.verticalGradient(
-        listOf(GoldBright, Gold, GoldDeep),
-    )
+    val GoldMetal = Brush.linearGradient(listOf(GoldHi, Gold, GoldLo, GoldMid))
+    val GoldMetalV = Brush.verticalGradient(listOf(GoldHi, Gold, GoldLo))
+    val GoldRing = Brush.sweepGradient(listOf(GoldHi, GoldLo, Gold, GoldHi))
 }
 
 data class MhjThemeColors(
@@ -59,41 +60,41 @@ data class MhjThemeColors(
 )
 
 val MidnightGoldColors = MhjThemeColors(
-    background = MhjColors.MidnightBg,
-    surface = MhjColors.MidnightSurface,
-    elevated = MhjColors.MidnightElevated,
-    recess = MhjColors.MidnightRecess,
-    glass = MhjColors.MidnightGlass,
+    background = MhjColors.NightBg,
+    surface = MhjColors.NightSurface,
+    elevated = MhjColors.NightElevated,
+    recess = MhjColors.NightRecess,
+    glass = MhjColors.NightGlass,
     primary = MhjColors.Gold,
-    primarySoft = MhjColors.GoldSoft,
-    onBackground = MhjColors.GoldBright,
-    onSurface = MhjColors.Gold,
-    muted = MhjColors.GoldMuted,
-    border = MhjColors.Gold.copy(alpha = 0.45f),
-    controlFill = MhjColors.Gold.copy(alpha = 0.14f),
-    visualizer = MhjColors.GoldBright,
-    lightShadow = MhjColors.MidnightHighlight,
-    darkShadow = MhjColors.MidnightShadow,
+    primarySoft = MhjColors.GoldHi,
+    onBackground = MhjColors.NightText,
+    onSurface = MhjColors.GoldHi,
+    muted = MhjColors.NightMuted,
+    border = MhjColors.Gold.copy(alpha = 0.35f),
+    controlFill = MhjColors.Gold.copy(alpha = 0.12f),
+    visualizer = MhjColors.GoldTrack,
+    lightShadow = MhjColors.NightLight,
+    darkShadow = MhjColors.NightDark,
     glow = MhjColors.GoldGlow,
     isDark = true,
 )
 
 val PorcelainWhiteColors = MhjThemeColors(
-    background = MhjColors.PorcelainBg,
-    surface = MhjColors.PorcelainSurface,
-    elevated = MhjColors.PorcelainElevated,
-    recess = MhjColors.PorcelainRecess,
-    glass = MhjColors.PorcelainGlass,
-    primary = MhjColors.GoldDeep,
-    primarySoft = MhjColors.GoldMuted,
-    onBackground = MhjColors.PorcelainInk,
-    onSurface = MhjColors.GoldDeep,
-    muted = MhjColors.PorcelainMuted,
-    border = MhjColors.GoldMuted.copy(alpha = 0.35f),
-    controlFill = MhjColors.GoldMuted.copy(alpha = 0.10f),
-    visualizer = MhjColors.GoldDeep,
-    lightShadow = MhjColors.PorcelainHighlight,
-    darkShadow = MhjColors.PorcelainShadow,
-    glow = MhjColors.Gold.copy(alpha = 0.28f),
+    background = MhjColors.PorcBg,
+    surface = MhjColors.PorcSurface,
+    elevated = MhjColors.PorcElevated,
+    recess = MhjColors.PorcRecess,
+    glass = MhjColors.PorcGlass,
+    primary = MhjColors.GoldMid,
+    primarySoft = MhjColors.Gold,
+    onBackground = MhjColors.PorcInk,
+    onSurface = MhjColors.PorcInk,
+    muted = MhjColors.PorcMuted,
+    border = MhjColors.GoldLo.copy(alpha = 0.28f),
+    controlFill = MhjColors.Gold.copy(alpha = 0.10f),
+    visualizer = MhjColors.GoldMid,
+    lightShadow = MhjColors.PorcLight,
+    darkShadow = MhjColors.PorcDark,
+    glow = MhjColors.Gold.copy(alpha = 0.22f),
     isDark = false,
 )

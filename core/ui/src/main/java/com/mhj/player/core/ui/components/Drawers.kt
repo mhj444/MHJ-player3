@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -22,10 +23,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AllInclusive
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.GraphicEq
 import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material.icons.outlined.NightsStay
+import androidx.compose.material.icons.outlined.Repeat
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material.icons.outlined.WbSunny
@@ -34,10 +37,17 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -47,6 +57,8 @@ import com.mhj.player.core.model.AppSettings
 import com.mhj.player.core.model.AppTheme
 import com.mhj.player.core.ui.theme.MhjColors
 import com.mhj.player.core.ui.theme.MhjTheme
+import kotlin.math.cos
+import kotlin.math.sin
 
 @Composable
 fun TopMenuDrawer(
@@ -56,39 +68,28 @@ fun TopMenuDrawer(
     onToggleTheme: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    OverlayDrawer(
-        visible = visible,
-        fromTop = true,
-        onDismiss = onDismiss,
-        modifier = modifier,
-    ) {
-        BrandLogoHeader(modifier = Modifier.fillMaxWidth())
-        Spacer(Modifier.height(18.dp))
+    OverlaySheet(visible = visible, fromTop = true, onDismiss = onDismiss, modifier = modifier) {
+        BrandLogoHeader()
+        Spacer(Modifier.height(16.dp))
         Text(
-            text = "Library",
+            "Library",
             color = MhjTheme.colors.onBackground,
             fontFamily = FontFamily.Serif,
             fontWeight = FontWeight.SemiBold,
             fontSize = 20.sp,
         )
-        Spacer(Modifier.height(14.dp))
-        MenuRow(
+        Spacer(Modifier.height(12.dp))
+        MenuCard(
             icon = Icons.Outlined.LibraryMusic,
             title = "Browse",
             subtitle = "Music & video",
             onClick = onDismiss,
         )
-        MenuRow(
-            icon = if (settings.theme == AppTheme.MIDNIGHT_GOLD) {
-                Icons.Outlined.WbSunny
-            } else {
-                Icons.Outlined.DarkMode
-            },
+        Spacer(Modifier.height(10.dp))
+        MenuCard(
+            icon = if (settings.theme == AppTheme.MIDNIGHT_GOLD) Icons.Outlined.WbSunny else Icons.Outlined.DarkMode,
             title = "Theme",
-            subtitle = when (settings.theme) {
-                AppTheme.MIDNIGHT_GOLD -> "Midnight Gold"
-                AppTheme.PORCELAIN_WHITE -> "Porcelain White"
-            },
+            subtitle = if (settings.theme == AppTheme.MIDNIGHT_GOLD) "Midnight Gold" else "Porcelain White",
             onClick = onToggleTheme,
         )
     }
@@ -106,196 +107,266 @@ fun BottomAudioDrawer(
     onTimerClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    OverlayDrawer(
-        visible = visible,
-        fromTop = false,
-        onDismiss = onDismiss,
-        modifier = modifier,
-    ) {
-        Text(
-            text = "Audio Processing",
-            color = MhjTheme.colors.onBackground,
-            fontFamily = FontFamily.Serif,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 20.sp,
-        )
-        Spacer(Modifier.height(14.dp))
-        ToggleRow(
-            label = "Dialogue Clarity Boost",
-            checked = settings.dialogueClarity,
-            onCheckedChange = onDialogueClarity,
-        )
-        ToggleRow(
-            label = "Night Mode Audio",
-            checked = settings.nightModeAudio,
-            onCheckedChange = onNightMode,
-        )
-        Spacer(Modifier.height(18.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            QuickTile(
-                modifier = Modifier.weight(1f),
-                icon = Icons.Outlined.Speed,
-                label = "Speed",
-                value = String.format("%.1fx", settings.playbackSpeed),
-                onClick = onSpeedClick,
+    var showDials by remember { mutableStateOf(false) }
+
+    OverlaySheet(visible = visible, fromTop = false, onDismiss = onDismiss, modifier = modifier) {
+        if (!showDials) {
+            Text(
+                "Audio Processing",
+                color = MhjTheme.colors.primary,
+                fontFamily = FontFamily.Serif,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 18.sp,
             )
-            QuickTile(
-                modifier = Modifier.weight(1f),
-                icon = Icons.Outlined.GraphicEq,
-                label = "Equalizer",
-                value = "Open",
-                onClick = onEqClick,
-            )
-        }
-        Spacer(Modifier.height(12.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            QuickTile(
-                modifier = Modifier.weight(1f),
-                icon = Icons.Outlined.Timer,
-                label = "Sleep",
-                value = if (settings.sleepTimerMinutes == 0) "Off" else "${settings.sleepTimerMinutes}m",
-                onClick = onTimerClick,
-            )
-            QuickTile(
-                modifier = Modifier.weight(1f),
-                icon = Icons.Outlined.NightsStay,
-                label = "Night",
-                value = if (settings.nightModeAudio) "On" else "Off",
-                onClick = { onNightMode(!settings.nightModeAudio) },
+            Spacer(Modifier.height(12.dp))
+            ToggleRow("Dialogue Clarity Boost", settings.dialogueClarity, onDialogueClarity)
+            ToggleRow("Night Mode Audio", settings.nightModeAudio, onNightMode)
+            Spacer(Modifier.height(16.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                GridTile(Modifier.weight(1f), Icons.Outlined.Repeat, "A-B", "Loop") { }
+                GridTile(Modifier.weight(1f), Icons.Outlined.Speed, "Speed", String.format("%.1fx", settings.playbackSpeed)) {
+                    showDials = true
+                    onSpeedClick()
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                GridTile(Modifier.weight(1f), Icons.Outlined.GraphicEq, "Equalizer", "Open", onEqClick)
+                GridTile(
+                    Modifier.weight(1f),
+                    Icons.Outlined.Timer,
+                    "Timer",
+                    if (settings.sleepTimerMinutes == 0) "Off" else "${settings.sleepTimerMinutes}m",
+                ) {
+                    showDials = true
+                    onTimerClick()
+                }
+            }
+        } else {
+            SpeedTimerDials(
+                settings = settings,
+                onBack = { showDials = false },
+                onSpeedClick = onSpeedClick,
+                onTimerClick = onTimerClick,
             )
         }
     }
 }
 
 @Composable
-private fun OverlayDrawer(
+private fun SpeedTimerDials(
+    settings: AppSettings,
+    onBack: () -> Unit,
+    onSpeedClick: () -> Unit,
+    onTimerClick: () -> Unit,
+) {
+    val c = MhjTheme.colors
+    Text(
+        "Playback Speed",
+        color = c.primary,
+        fontFamily = FontFamily.Serif,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 17.sp,
+        modifier = Modifier.clickable(onClick = onBack),
+    )
+    Spacer(Modifier.height(8.dp))
+    DialCard(
+        centerLabel = String.format("%.1fx", settings.playbackSpeed),
+        progress = ((settings.playbackSpeed - 0.25f) / 2.75f).coerceIn(0f, 1f),
+        ticks = listOf("0.5x", "1.0x", "1.5x", "2.0x", "3.0x"),
+        onClick = onSpeedClick,
+    )
+    Spacer(Modifier.height(8.dp))
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        EmbossCircle(onClick = onSpeedClick, diameter = 40.dp) {
+            Text("−", color = c.primary, fontSize = 20.sp)
+        }
+        Text("1.0x", color = c.muted, fontSize = 13.sp)
+        EmbossCircle(onClick = onSpeedClick, diameter = 40.dp) {
+            Text("+", color = c.primary, fontSize = 20.sp)
+        }
+    }
+    Spacer(Modifier.height(16.dp))
+    Text(
+        "Sleep Timer",
+        color = c.primary,
+        fontFamily = FontFamily.Serif,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 17.sp,
+    )
+    Spacer(Modifier.height(8.dp))
+    DialCard(
+        centerLabel = if (settings.sleepTimerMinutes == 0) "Off" else "${settings.sleepTimerMinutes} min",
+        progress = (settings.sleepTimerMinutes / 60f).coerceIn(0f, 1f).let { if (it == 0f) 0.08f else it },
+        ticks = emptyList(),
+        onClick = onTimerClick,
+    )
+    Spacer(Modifier.height(10.dp))
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        PillChip(Modifier.weight(1f), Icons.Outlined.AllInclusive, "Off", settings.sleepTimerMinutes == 0, onTimerClick)
+        PillChip(Modifier.weight(1f), Icons.Outlined.NightsStay, "At end", false, onTimerClick)
+        PillChip(Modifier.weight(1f), Icons.Outlined.Timer, "Custom", settings.sleepTimerMinutes > 0, onTimerClick)
+    }
+}
+
+@Composable
+private fun DialCard(
+    centerLabel: String,
+    progress: Float,
+    ticks: List<String>,
+    onClick: () -> Unit,
+) {
+    val c = MhjTheme.colors
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(168.dp)
+            .softEmboss(24.dp, c.lightShadow, c.darkShadow, 12.dp)
+            .clip(RoundedCornerShape(24.dp))
+            .background(Brush.verticalGradient(listOf(c.elevated, c.surface)))
+            .softGoldHairline(24.dp)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(Modifier.size(140.dp)) {
+            val stroke = 8.dp.toPx()
+            drawArc(
+                color = c.controlFill,
+                startAngle = 140f,
+                sweepAngle = 260f,
+                useCenter = false,
+                style = Stroke(width = stroke, cap = StrokeCap.Round),
+            )
+            drawArc(
+                brush = Brush.sweepGradient(listOf(MhjColors.GoldLo, MhjColors.GoldHi, MhjColors.Gold)),
+                startAngle = 140f,
+                sweepAngle = 260f * progress,
+                useCenter = false,
+                style = Stroke(width = stroke, cap = StrokeCap.Round),
+            )
+            // tick marks
+            ticks.forEachIndexed { i, _ ->
+                val t = i / (ticks.size - 1f).coerceAtLeast(1f)
+                val ang = Math.toRadians((140.0 + 260.0 * t))
+                val rOuter = size.minDimension / 2f - 2.dp.toPx()
+                val rInner = rOuter - 8.dp.toPx()
+                val cx = size.width / 2f
+                val cy = size.height / 2f
+                drawLine(
+                    color = c.primary.copy(alpha = 0.45f),
+                    start = Offset(cx + cos(ang).toFloat() * rInner, cy + sin(ang).toFloat() * rInner),
+                    end = Offset(cx + cos(ang).toFloat() * rOuter, cy + sin(ang).toFloat() * rOuter),
+                    strokeWidth = 2.dp.toPx(),
+                    cap = StrokeCap.Round,
+                )
+            }
+        }
+        Text(
+            centerLabel,
+            color = c.primary,
+            fontSize = 28.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = FontFamily.Serif,
+        )
+    }
+}
+
+@Composable
+private fun OverlaySheet(
     visible: Boolean,
     fromTop: Boolean,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
-    drawerBody: @Composable ColumnScope.() -> Unit,
+    body: @Composable ColumnScope.() -> Unit,
 ) {
-    val colors = MhjTheme.colors
-    val sheetShape = RoundedCornerShape(
-        topStart = if (fromTop) 0.dp else 30.dp,
-        topEnd = if (fromTop) 0.dp else 30.dp,
-        bottomStart = if (fromTop) 30.dp else 0.dp,
-        bottomEnd = if (fromTop) 30.dp else 0.dp,
+    val c = MhjTheme.colors
+    val shape = RoundedCornerShape(
+        topStart = if (fromTop) 0.dp else 32.dp,
+        topEnd = if (fromTop) 0.dp else 32.dp,
+        bottomStart = if (fromTop) 32.dp else 0.dp,
+        bottomEnd = if (fromTop) 32.dp else 0.dp,
     )
-
     AnimatedVisibility(
         visible = visible,
         modifier = modifier,
-        enter = fadeIn(animationSpec = tween(180)) + slideInVertically(
-            animationSpec = tween(280),
-            initialOffsetY = { full -> if (fromTop) -full / 2 else full / 2 },
-        ),
-        exit = fadeOut(animationSpec = tween(160)) + slideOutVertically(
-            animationSpec = tween(220),
-            targetOffsetY = { full -> if (fromTop) -full / 2 else full / 2 },
-        ),
+        enter = fadeIn(tween(160)) + slideInVertically(tween(280)) { if (fromTop) -it / 2 else it / 2 },
+        exit = fadeOut(tween(140)) + slideOutVertically(tween(220)) { if (fromTop) -it / 2 else it / 2 },
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize()) {
             Box(
-                modifier = Modifier
+                Modifier
                     .fillMaxSize()
-                    .background(colors.background.copy(alpha = 0.48f))
+                    .background(c.background.copy(alpha = 0.42f))
                     .clickable(onClick = onDismiss),
             )
             Column(
                 modifier = Modifier
                     .align(if (fromTop) Alignment.TopCenter else Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .neumorphRaised(
-                        shapeRadius = 30.dp,
-                        light = colors.lightShadow,
-                        dark = colors.darkShadow,
-                        elevation = 18.dp,
-                    )
-                    .clip(sheetShape)
+                    .softEmboss(32.dp, c.lightShadow, c.darkShadow, 18.dp)
+                    .clip(shape)
                     .background(
                         Brush.verticalGradient(
                             listOf(
-                                colors.glass.copy(alpha = 0.96f),
-                                colors.elevated.copy(alpha = 0.92f),
+                                c.glass.copy(alpha = 0.96f),
+                                c.elevated.copy(alpha = 0.94f),
                             ),
                         ),
                     )
-                    .goldRim(radius = 30.dp, alpha = 0.55f)
-                    .padding(horizontal = 22.dp, vertical = 20.dp),
-                content = drawerBody,
+                    .softGoldHairline(32.dp)
+                    .padding(horizontal = 20.dp, vertical = 18.dp),
+                content = body,
             )
         }
     }
 }
 
 @Composable
-private fun MenuRow(
-    icon: ImageVector,
-    title: String,
-    subtitle: String,
-    onClick: () -> Unit,
-) {
-    val colors = MhjTheme.colors
+private fun MenuCard(icon: ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
+    val c = MhjTheme.colors
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 6.dp)
-            .neumorphRaised(
-                shapeRadius = 18.dp,
-                light = colors.lightShadow,
-                dark = colors.darkShadow,
-                elevation = 7.dp,
-            )
+            .softEmboss(18.dp, c.lightShadow, c.darkShadow, 8.dp)
             .clip(RoundedCornerShape(18.dp))
-            .background(Brush.verticalGradient(listOf(colors.elevated, colors.surface)))
+            .background(Brush.verticalGradient(listOf(c.elevated, c.surface)))
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 14.dp),
+            .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Box(
-            modifier = Modifier
+            Modifier
                 .size(42.dp)
                 .clip(CircleShape)
-                .background(colors.controlFill),
+                .background(c.controlFill),
             contentAlignment = Alignment.Center,
-        ) {
-            Icon(icon, contentDescription = null, tint = colors.primary)
-        }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(text = title, color = colors.onBackground, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-            Text(text = subtitle, color = colors.muted, fontSize = 12.sp)
+        ) { Icon(icon, null, tint = c.primary) }
+        Column {
+            Text(title, color = c.onBackground, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+            Text(subtitle, color = c.muted, fontSize = 12.sp)
         }
     }
 }
 
 @Composable
-private fun ToggleRow(
-    label: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-) {
+private fun ToggleRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp),
+        Modifier.fillMaxWidth().padding(vertical = 7.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(text = label, color = MhjTheme.colors.onBackground, fontSize = 15.sp)
+        Text(label, color = MhjTheme.colors.onBackground, fontSize = 14.sp)
         Switch(
             checked = checked,
-            onCheckedChange = onCheckedChange,
+            onCheckedChange = onChange,
             colors = SwitchDefaults.colors(
-                checkedThumbColor = MhjColors.GoldBright,
-                checkedTrackColor = MhjColors.GoldOrange.copy(alpha = 0.55f),
+                checkedThumbColor = MhjColors.GoldHi,
+                checkedTrackColor = MhjColors.Gold.copy(alpha = 0.55f),
                 uncheckedThumbColor = MhjTheme.colors.muted,
                 uncheckedTrackColor = MhjTheme.colors.recess,
             ),
@@ -304,33 +375,46 @@ private fun ToggleRow(
 }
 
 @Composable
-private fun QuickTile(
+private fun GridTile(
+    modifier: Modifier,
     icon: ImageVector,
     label: String,
     value: String,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier,
 ) {
-    EmbossedTile(
-        onClick = onClick,
-        modifier = modifier.height(112.dp),
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.padding(12.dp),
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(MhjTheme.colors.controlFill),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(icon, contentDescription = label, tint = MhjTheme.colors.primary)
-            }
-            Text(text = label, color = MhjTheme.colors.onBackground, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-            Text(text = value, color = MhjTheme.colors.muted, fontSize = 12.sp)
+    EmbossTile(onClick = onClick, modifier = modifier.height(108.dp)) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Icon(icon, null, tint = MhjTheme.colors.primary, modifier = Modifier.size(26.dp))
+            Text(label, color = MhjTheme.colors.onBackground, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            Text(value, color = MhjTheme.colors.muted, fontSize = 11.sp)
         }
+    }
+}
+
+@Composable
+private fun PillChip(
+    modifier: Modifier,
+    icon: ImageVector,
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val c = MhjTheme.colors
+    Row(
+        modifier = modifier
+            .softEmboss(18.dp, c.lightShadow, c.darkShadow, 7.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(
+                if (selected) c.controlFill
+                else c.elevated,
+            )
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp, horizontal = 8.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, null, tint = if (selected) c.primary else c.muted, modifier = Modifier.size(16.dp))
+        Spacer(Modifier.size(6.dp))
+        Text(label, color = if (selected) c.primary else c.muted, fontSize = 12.sp)
     }
 }

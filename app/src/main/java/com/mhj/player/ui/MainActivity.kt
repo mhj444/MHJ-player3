@@ -29,7 +29,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mhj.player.MhjApp
-import com.mhj.player.core.ui.components.AmbientBackground
+import com.mhj.player.core.ui.components.BoardBackground
 import com.mhj.player.core.ui.components.BottomAudioDrawer
 import com.mhj.player.core.ui.components.TopMenuDrawer
 import com.mhj.player.core.ui.gestures.playerEdgeSwipes
@@ -112,7 +112,7 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
                 },
             ),
     ) {
-        AmbientBackground()
+        BoardBackground()
         Box(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
         HorizontalPager(
             state = pagerState,

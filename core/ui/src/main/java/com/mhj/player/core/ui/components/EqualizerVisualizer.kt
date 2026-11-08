@@ -16,22 +16,18 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
+import com.mhj.player.core.ui.theme.MhjColors
 import com.mhj.player.core.ui.theme.MhjTheme
 import kotlin.math.PI
 import kotlin.math.sin
 
-/**
- * Mid-screen equalizer / waveform visualizer under track info.
- * Phase 1 uses a driven animation; hooks ready for real FFT later.
- */
+/** Board-style mid EQ: discrete gold bars with dotted baseline. */
 @Composable
 fun EqualizerVisualizer(
     active: Boolean,
     modifier: Modifier = Modifier,
-    barCount: Int = 48,
+    barCount: Int = 36,
 ) {
     val colors = MhjTheme.colors
     val transition = rememberInfiniteTransition(label = "eq")
@@ -39,69 +35,59 @@ fun EqualizerVisualizer(
         initialValue = 0f,
         targetValue = (2f * PI).toFloat(),
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = if (active) 1800 else 6000, easing = LinearEasing),
+            animation = tween(if (active) 1600 else 7000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart,
         ),
         label = "eqPhase",
     )
-    val intensity = if (active) 1f else 0.22f
+    val intensity = if (active) 1f else 0.28f
 
     Canvas(
         modifier = modifier
             .fillMaxWidth()
-            .height(36.dp),
+            .height(34.dp),
     ) {
         val w = size.width
         val h = size.height
-        val gap = w / (barCount * 2.4f)
-        val barWidth = gap * 1.15f
-        val totalBarsWidth = barCount * (barWidth + gap) - gap
-        val startX = (w - totalBarsWidth) / 2f
+        val gap = w / (barCount * 2.6f)
+        val barW = gap * 1.05f
+        val total = barCount * (barW + gap) - gap
+        val startX = (w - total) / 2f
+        val midY = h * 0.55f
+        val dotR = 1.1.dp.toPx()
 
-        // Soft baseline waveform stroke behind bars
-        val pathStroke = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
-        var prev = Offset.Zero
-        for (i in 0..barCount) {
-            val t = i / barCount.toFloat()
-            val x = startX + t * totalBarsWidth
-            val wave = sin(phase + t * 8f) * 0.28f + sin(phase * 1.7f + t * 3.2f) * 0.18f
-            val y = h / 2f - wave * h * 0.45f * intensity
-            val point = Offset(x, y)
-            if (i > 0) {
-                drawLine(
-                    brush = Brush.horizontalGradient(
-                        listOf(colors.visualizer.copy(alpha = 0.25f), colors.visualizer.copy(alpha = 0.55f)),
-                    ),
-                    start = prev,
-                    end = point,
-                    strokeWidth = pathStroke.width,
-                    cap = StrokeCap.Round,
-                )
-            }
-            prev = point
+        val dots = barCount * 2
+        for (i in 0 until dots) {
+            val x = startX + (i / (dots - 1f)) * total
+            drawCircle(
+                color = colors.visualizer.copy(alpha = 0.35f),
+                radius = dotR,
+                center = Offset(x, midY + h * 0.28f),
+            )
         }
 
         for (i in 0 until barCount) {
             val t = i / (barCount - 1f)
-            val envelope = sin(t * PI).toFloat().coerceIn(0.15f, 1f)
+            val envelope = sin(t * PI).toFloat().coerceIn(0.18f, 1f)
             val wave = (
-                sin(phase + i * 0.55f) * 0.45f +
-                    sin(phase * 1.9f + i * 0.33f) * 0.35f +
-                    0.35f
-                ).coerceIn(0.12f, 1f)
-            val barH = h * wave * envelope * intensity
-            val x = startX + i * (barWidth + gap)
-            val y = (h - barH) / 2f
+                sin(phase + i * 0.48f) * 0.42f +
+                    sin(phase * 1.7f + i * 0.29f) * 0.32f +
+                    0.38f
+                ).coerceIn(0.14f, 1f)
+            val barH = h * 0.78f * wave * envelope * intensity
+            val x = startX + i * (barW + gap)
+            val y = midY - barH / 2f
             drawRoundRect(
                 brush = Brush.verticalGradient(
-                    colors = listOf(
-                        colors.visualizer.copy(alpha = 0.95f),
-                        colors.visualizer.copy(alpha = 0.35f),
+                    listOf(
+                        MhjColors.GoldHi.copy(alpha = 0.95f),
+                        colors.visualizer.copy(alpha = 0.85f),
+                        MhjColors.GoldLo.copy(alpha = 0.55f),
                     ),
                 ),
                 topLeft = Offset(x, y),
-                size = Size(barWidth, barH),
-                cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f),
+                size = Size(barW, barH),
+                cornerRadius = CornerRadius(barW / 2f, barW / 2f),
             )
         }
     }
