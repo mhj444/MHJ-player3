@@ -116,7 +116,7 @@ fun MusicPlayerScreen(
 
         Spacer(Modifier.height(if (dark) 4.dp else 10.dp))
 
-        // Album + board gold-glass frame bitmap over art
+        // Album + thin multi-line gold-glass frame (no chunky outer halo)
         Box(
             modifier = Modifier
                 .fillMaxWidth(if (dark) 0.90f else 0.86f)
@@ -126,20 +126,13 @@ fun MusicPlayerScreen(
                         Modifier.drawBehind {
                             drawRoundRect(
                                 brush = Brush.radialGradient(
-                                    listOf(Color(0x33C4A46A), Color.Transparent),
+                                    listOf(Color(0x22C4A46A), Color.Transparent),
                                 ),
                                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(48.dp.toPx()),
                             )
                         }
                     } else {
-                        Modifier.drawBehind {
-                            drawCircle(
-                                brush = Brush.radialGradient(
-                                    listOf(Color(0x55D4AF37), Color.Transparent),
-                                ),
-                                radius = size.minDimension * 0.58f,
-                            )
-                        }
+                        Modifier // Midnight: frame bitmap carries thin gold lines; no radial glow tile
                     },
                 ),
             contentAlignment = Alignment.Center,
@@ -148,8 +141,8 @@ fun MusicPlayerScreen(
                 painter = painterResource(R.drawable.demo_album_art),
                 contentDescription = null,
                 modifier = Modifier
-                    .fillMaxSize(if (dark) 0.84f else 0.84f)
-                    .clip(RoundedCornerShape(if (dark) 26.dp else 30.dp)),
+                    .fillMaxSize(if (dark) 0.88f else 0.84f)
+                    .clip(RoundedCornerShape(if (dark) 22.dp else 30.dp)),
                 contentScale = ContentScale.Crop,
             )
             Image(
@@ -254,7 +247,10 @@ private fun HeaderChrome(onClick: () -> Unit, dark: Boolean, left: Boolean) {
     )
 }
 
-/** Midnight: bitmap glass play disc + glowing embossed transport glyphs (no Material Icons). */
+/**
+ * Midnight transport: feedback/board cropped bitmaps only.
+ * No softGoldHalo glow tiles, no Material triangle, no ribbon tabs.
+ */
 @Composable
 private fun MidnightTransport(
     @Suppress("UNUSED_PARAMETER") state: PlayerUiState,
@@ -269,25 +265,19 @@ private fun MidnightTransport(
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        MidGlyph(R.drawable.chrome_mid_shuffle, onShuffle, 52.dp)
-        MidGlyph(R.drawable.chrome_mid_prev, onPrevious, 58.dp)
-        // Always board double-ring pause/play bitmap — never flat play-triangle swap
-        Box(
+        MidGlyph(R.drawable.chrome_mid_shuffle, onShuffle, 44.dp)
+        MidGlyph(R.drawable.chrome_mid_prev, onPrevious, 48.dp)
+        // Gold-glass ring + pause/play from feedback crop
+        Image(
+            painter = painterResource(R.drawable.chrome_mid_play),
+            contentDescription = "Play pause",
             modifier = Modifier
-                .size(104.dp)
-                .softGoldHalo(52.dp, bloom = 24.dp, intensity = 0.7f)
+                .size(92.dp)
                 .clickable(onClick = onPlayPause),
-            contentAlignment = Alignment.Center,
-        ) {
-            Image(
-                painter = painterResource(R.drawable.chrome_mid_play),
-                contentDescription = "Play pause",
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Fit,
-            )
-        }
-        MidGlyph(R.drawable.chrome_mid_next, onNext, 58.dp)
-        MidGlyph(R.drawable.chrome_mid_repeat, onRepeat, 52.dp)
+            contentScale = ContentScale.Fit,
+        )
+        MidGlyph(R.drawable.chrome_mid_next, onNext, 48.dp)
+        MidGlyph(R.drawable.chrome_mid_repeat, onRepeat, 44.dp)
     }
 }
 
@@ -298,7 +288,6 @@ private fun MidGlyph(res: Int, onClick: () -> Unit, size: Dp) {
         contentDescription = null,
         modifier = Modifier
             .size(size)
-            .softGoldHalo(size / 2, bloom = 14.dp, intensity = 0.55f)
             .clickable(onClick = onClick),
         contentScale = ContentScale.Fit,
     )
@@ -372,8 +361,7 @@ private fun BottomNav(dark: Boolean, onHome: () -> Unit, onLibrary: () -> Unit) 
                 painter = painterResource(R.drawable.chrome_mid_nav_home),
                 contentDescription = "Home",
                 modifier = Modifier
-                    .height(72.dp)
-                    .softGoldHalo(18.dp, bloom = 12.dp, intensity = 0.5f)
+                    .height(64.dp)
                     .clickable(onClick = onHome),
                 contentScale = ContentScale.Fit,
             )
@@ -381,8 +369,7 @@ private fun BottomNav(dark: Boolean, onHome: () -> Unit, onLibrary: () -> Unit) 
                 painter = painterResource(R.drawable.chrome_mid_nav_library),
                 contentDescription = "Library",
                 modifier = Modifier
-                    .height(72.dp)
-                    .softGoldHalo(18.dp, bloom = 12.dp, intensity = 0.45f)
+                    .height(64.dp)
                     .clickable(onClick = onLibrary),
                 contentScale = ContentScale.Fit,
             )

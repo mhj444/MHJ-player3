@@ -136,25 +136,30 @@ fun BottomAudioDrawer(
                 color = MhjTheme.colors.primary,
                 fontFamily = FontFamily.Serif,
                 fontWeight = FontWeight.SemiBold,
-                fontSize = 18.sp,
+                fontSize = 20.sp,
             )
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(14.dp))
             ToggleRow("Dialogue Clarity Boost", settings.dialogueClarity, onDialogueClarity)
             ToggleRow("Night Mode Audio", settings.nightModeAudio, onNightMode)
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(18.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                GridTile(Modifier.weight(1f), Icons.Outlined.Repeat, "A-B", "Loop") { }
-                GridTile(Modifier.weight(1f), Icons.Outlined.Speed, "Speed", String.format("%.1fx", settings.playbackSpeed)) {
+                BoardGridTile(Modifier.weight(1f), AudioGridIcon.AbLoop, "A-B", "Loop") { }
+                BoardGridTile(
+                    Modifier.weight(1f),
+                    AudioGridIcon.Speed,
+                    "Speed",
+                    String.format("%.1fx", settings.playbackSpeed),
+                ) {
                     showDials = true
                     onSpeedClick()
                 }
             }
             Spacer(Modifier.height(12.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                GridTile(Modifier.weight(1f), Icons.Outlined.GraphicEq, "Equalizer", "Open", onEqClick)
-                GridTile(
+                BoardGridTile(Modifier.weight(1f), AudioGridIcon.Equalizer, "Equalizer", "Open", onEqClick)
+                BoardGridTile(
                     Modifier.weight(1f),
-                    Icons.Outlined.Timer,
+                    AudioGridIcon.Timer,
                     "Timer",
                     if (settings.sleepTimerMinutes == 0) "Off" else "${settings.sleepTimerMinutes}m",
                 ) {
@@ -346,14 +351,15 @@ private fun OverlaySheet(
         bottomStart = if (fromTop) 32.dp else 0.dp,
         bottomEnd = if (fromTop) 32.dp else 0.dp,
     )
+    // Light frost — avoid muddy stacked overlays; thin gold border like board
     val frostStyle = HazeStyle(
-        backgroundColor = c.elevated.copy(alpha = 0.55f),
+        backgroundColor = Color(0xE6101014),
         tints = listOf(
-            HazeTint(c.glass.copy(alpha = if (c.isDark) 0.45f else 0.55f)),
-            HazeTint(MhjColors.Gold.copy(alpha = 0.06f)),
+            HazeTint(Color(0xCC14141A)),
+            HazeTint(MhjColors.Gold.copy(alpha = 0.04f)),
         ),
-        blurRadius = 22.dp,
-        noiseFactor = HazeDefaults.noiseFactor,
+        blurRadius = 18.dp,
+        noiseFactor = 0.08f,
     )
     AnimatedVisibility(
         visible = visible,
@@ -365,42 +371,139 @@ private fun OverlaySheet(
             Box(
                 Modifier
                     .fillMaxSize()
-                    .background(c.background.copy(alpha = 0.28f))
+                    .background(Color.Black.copy(alpha = 0.18f))
                     .clickable(onClick = onDismiss),
             )
             Column(
                 modifier = Modifier
                     .align(if (fromTop) Alignment.TopCenter else Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .softEmboss(32.dp, c.lightShadow, c.darkShadow, 18.dp)
                     .clip(shape)
                     .then(
                         if (hazeState != null) {
                             Modifier.hazeEffect(state = hazeState, style = frostStyle)
                         } else {
-                            Modifier.background(
-                                Brush.verticalGradient(
-                                    listOf(
-                                        c.glass.copy(alpha = 0.92f),
-                                        c.elevated.copy(alpha = 0.90f),
-                                    ),
-                                ),
-                            )
+                            Modifier.background(Color(0xF214141A))
                         },
                     )
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(
-                                c.glass.copy(alpha = if (hazeState != null) 0.42f else 0.96f),
-                                c.elevated.copy(alpha = if (hazeState != null) 0.38f else 0.94f),
-                            ),
-                        ),
-                    )
+                    .background(Color(0x99101014))
                     .softGoldHairline(32.dp)
                     .padding(horizontal = 20.dp, vertical = 18.dp),
                 content = body,
             )
         }
+    }
+}
+
+private enum class AudioGridIcon { AbLoop, Speed, Equalizer, Timer }
+
+/** Board 2x2 tile: thin gold border + Canvas gold glyph (not Material Icons). */
+@Composable
+private fun BoardGridTile(
+    modifier: Modifier,
+    icon: AudioGridIcon,
+    label: String,
+    value: String,
+    onClick: () -> Unit,
+) {
+    val c = MhjTheme.colors
+    Column(
+        modifier = modifier
+            .height(112.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color(0x33101014))
+            .softGoldHairline(16.dp)
+            .clickable(onClick = onClick)
+            .padding(vertical = 12.dp, horizontal = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Canvas(Modifier.size(28.dp)) {
+            val gold = MhjColors.GoldHi
+            val stroke = 2.2.dp.toPx()
+            when (icon) {
+                AudioGridIcon.AbLoop -> {
+                    // Dual horizontal arrows
+                    drawArc(
+                        color = gold,
+                        startAngle = 200f,
+                        sweepAngle = 140f,
+                        useCenter = false,
+                        topLeft = Offset(size.width * 0.12f, size.height * 0.18f),
+                        size = androidx.compose.ui.geometry.Size(size.width * 0.76f, size.height * 0.45f),
+                        style = Stroke(width = stroke, cap = StrokeCap.Round),
+                    )
+                    drawArc(
+                        color = gold,
+                        startAngle = 20f,
+                        sweepAngle = 140f,
+                        useCenter = false,
+                        topLeft = Offset(size.width * 0.12f, size.height * 0.38f),
+                        size = androidx.compose.ui.geometry.Size(size.width * 0.76f, size.height * 0.45f),
+                        style = Stroke(width = stroke, cap = StrokeCap.Round),
+                    )
+                }
+                AudioGridIcon.Speed -> {
+                    drawArc(
+                        color = gold,
+                        startAngle = 140f,
+                        sweepAngle = 260f,
+                        useCenter = false,
+                        style = Stroke(width = stroke, cap = StrokeCap.Round),
+                    )
+                    val ang = Math.toRadians(220.0)
+                    drawLine(
+                        color = gold,
+                        start = Offset(size.width / 2f, size.height / 2f),
+                        end = Offset(
+                            size.width / 2f + cos(ang).toFloat() * size.minDimension * 0.32f,
+                            size.height / 2f + sin(ang).toFloat() * size.minDimension * 0.32f,
+                        ),
+                        strokeWidth = stroke,
+                        cap = StrokeCap.Round,
+                    )
+                    drawCircle(color = gold, radius = 2.5.dp.toPx())
+                }
+                AudioGridIcon.Equalizer -> {
+                    val bars = listOf(0.35f, 0.7f, 1f, 0.55f, 0.4f)
+                    val gap = size.width / (bars.size * 1.8f)
+                    val bw = gap * 0.7f
+                    bars.forEachIndexed { i, hFrac ->
+                        val bh = size.height * 0.75f * hFrac
+                        val x = size.width * 0.12f + i * (bw + gap)
+                        drawRoundRect(
+                            color = gold,
+                            topLeft = Offset(x, size.height * 0.85f - bh),
+                            size = androidx.compose.ui.geometry.Size(bw, bh),
+                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(bw / 2f),
+                        )
+                    }
+                }
+                AudioGridIcon.Timer -> {
+                    drawCircle(
+                        color = gold,
+                        radius = size.minDimension * 0.36f,
+                        style = Stroke(width = stroke),
+                    )
+                    drawLine(
+                        color = gold,
+                        start = Offset(size.width / 2f, size.height / 2f),
+                        end = Offset(size.width / 2f, size.height * 0.28f),
+                        strokeWidth = stroke,
+                        cap = StrokeCap.Round,
+                    )
+                    drawLine(
+                        color = gold,
+                        start = Offset(size.width / 2f, size.height / 2f),
+                        end = Offset(size.width * 0.68f, size.height * 0.55f),
+                        strokeWidth = stroke,
+                        cap = StrokeCap.Round,
+                    )
+                }
+            }
+        }
+        Text(label, color = c.primary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+        Text(value, color = c.muted, fontSize = 11.sp)
     }
 }
 
