@@ -46,6 +46,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -57,6 +58,11 @@ import com.mhj.player.core.model.AppSettings
 import com.mhj.player.core.model.AppTheme
 import com.mhj.player.core.ui.theme.MhjColors
 import com.mhj.player.core.ui.theme.MhjTheme
+import dev.chrisbanes.haze.HazeDefaults
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeEffect
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -67,8 +73,15 @@ fun TopMenuDrawer(
     onDismiss: () -> Unit,
     onToggleTheme: () -> Unit,
     modifier: Modifier = Modifier,
+    hazeState: HazeState? = null,
 ) {
-    OverlaySheet(visible = visible, fromTop = true, onDismiss = onDismiss, modifier = modifier) {
+    OverlaySheet(
+        visible = visible,
+        fromTop = true,
+        onDismiss = onDismiss,
+        modifier = modifier,
+        hazeState = hazeState,
+    ) {
         BrandLogoHeader()
         Spacer(Modifier.height(16.dp))
         Text(
@@ -106,10 +119,17 @@ fun BottomAudioDrawer(
     onEqClick: () -> Unit,
     onTimerClick: () -> Unit,
     modifier: Modifier = Modifier,
+    hazeState: HazeState? = null,
 ) {
     var showDials by remember { mutableStateOf(false) }
 
-    OverlaySheet(visible = visible, fromTop = false, onDismiss = onDismiss, modifier = modifier) {
+    OverlaySheet(
+        visible = visible,
+        fromTop = false,
+        onDismiss = onDismiss,
+        modifier = modifier,
+        hazeState = hazeState,
+    ) {
         if (!showDials) {
             Text(
                 "Audio Processing",
@@ -224,7 +244,8 @@ private fun DialCard(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(168.dp)
+            .height(176.dp)
+            .softGoldHalo(24.dp, bloom = 20.dp, intensity = 0.5f)
             .softEmboss(24.dp, c.lightShadow, c.darkShadow, 12.dp)
             .clip(RoundedCornerShape(24.dp))
             .background(Brush.verticalGradient(listOf(c.elevated, c.surface)))
@@ -232,45 +253,79 @@ private fun DialCard(
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Canvas(Modifier.size(140.dp)) {
-            val stroke = 8.dp.toPx()
+        // Canvas speed / sleep dial — shiny gold arc + needle (board tech note)
+        Canvas(Modifier.size(148.dp)) {
+            val stroke = 10.dp.toPx()
+            val cx = size.width / 2f
+            val cy = size.height / 2f
+            val radius = size.minDimension / 2f - stroke
+            // Track well
             drawArc(
-                color = c.controlFill,
+                color = c.controlFill.copy(alpha = 0.85f),
                 startAngle = 140f,
                 sweepAngle = 260f,
                 useCenter = false,
                 style = Stroke(width = stroke, cap = StrokeCap.Round),
             )
+            // Gold progress with light halo underlay
             drawArc(
-                brush = Brush.sweepGradient(listOf(MhjColors.GoldLo, MhjColors.GoldHi, MhjColors.Gold)),
+                brush = Brush.radialGradient(
+                    listOf(MhjColors.GoldHi.copy(alpha = 0.35f), Color.Transparent),
+                    center = Offset(cx, cy),
+                    radius = radius + stroke,
+                ),
+                startAngle = 140f,
+                sweepAngle = 260f * progress,
+                useCenter = false,
+                style = Stroke(width = stroke * 2.2f, cap = StrokeCap.Round),
+            )
+            drawArc(
+                brush = Brush.sweepGradient(
+                    listOf(MhjColors.GoldLo, MhjColors.GoldHi, MhjColors.Gold, MhjColors.GoldLo),
+                    center = Offset(cx, cy),
+                ),
                 startAngle = 140f,
                 sweepAngle = 260f * progress,
                 useCenter = false,
                 style = Stroke(width = stroke, cap = StrokeCap.Round),
             )
-            // tick marks
             ticks.forEachIndexed { i, _ ->
                 val t = i / (ticks.size - 1f).coerceAtLeast(1f)
                 val ang = Math.toRadians((140.0 + 260.0 * t))
-                val rOuter = size.minDimension / 2f - 2.dp.toPx()
-                val rInner = rOuter - 8.dp.toPx()
-                val cx = size.width / 2f
-                val cy = size.height / 2f
+                val rOuter = radius + stroke * 0.15f
+                val rInner = rOuter - 10.dp.toPx()
                 drawLine(
-                    color = c.primary.copy(alpha = 0.45f),
+                    color = MhjColors.GoldHi.copy(alpha = 0.55f),
                     start = Offset(cx + cos(ang).toFloat() * rInner, cy + sin(ang).toFloat() * rInner),
                     end = Offset(cx + cos(ang).toFloat() * rOuter, cy + sin(ang).toFloat() * rOuter),
                     strokeWidth = 2.dp.toPx(),
                     cap = StrokeCap.Round,
                 )
             }
+            // Needle
+            val nang = Math.toRadians((140.0 + 260.0 * progress.coerceIn(0f, 1f)))
+            val nx = cx + cos(nang).toFloat() * (radius - 6.dp.toPx())
+            val ny = cy + sin(nang).toFloat() * (radius - 6.dp.toPx())
+            drawLine(
+                brush = Brush.linearGradient(listOf(MhjColors.GoldHi, MhjColors.GoldLo)),
+                start = Offset(cx, cy),
+                end = Offset(nx, ny),
+                strokeWidth = 3.5.dp.toPx(),
+                cap = StrokeCap.Round,
+            )
+            drawCircle(
+                brush = Brush.radialGradient(listOf(MhjColors.GoldHi, MhjColors.GoldLo)),
+                radius = 7.dp.toPx(),
+                center = Offset(cx, cy),
+            )
         }
         Text(
             centerLabel,
             color = c.primary,
-            fontSize = 28.sp,
+            fontSize = 26.sp,
             fontWeight = FontWeight.Bold,
             fontFamily = FontFamily.Serif,
+            modifier = Modifier.padding(top = 52.dp),
         )
     }
 }
@@ -281,6 +336,7 @@ private fun OverlaySheet(
     fromTop: Boolean,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    hazeState: HazeState? = null,
     body: @Composable ColumnScope.() -> Unit,
 ) {
     val c = MhjTheme.colors
@@ -289,6 +345,15 @@ private fun OverlaySheet(
         topEnd = if (fromTop) 0.dp else 32.dp,
         bottomStart = if (fromTop) 32.dp else 0.dp,
         bottomEnd = if (fromTop) 32.dp else 0.dp,
+    )
+    val frostStyle = HazeStyle(
+        backgroundColor = c.elevated.copy(alpha = 0.55f),
+        tints = listOf(
+            HazeTint(c.glass.copy(alpha = if (c.isDark) 0.45f else 0.55f)),
+            HazeTint(MhjColors.Gold.copy(alpha = 0.06f)),
+        ),
+        blurRadius = 22.dp,
+        noiseFactor = HazeDefaults.noiseFactor,
     )
     AnimatedVisibility(
         visible = visible,
@@ -300,7 +365,7 @@ private fun OverlaySheet(
             Box(
                 Modifier
                     .fillMaxSize()
-                    .background(c.background.copy(alpha = 0.42f))
+                    .background(c.background.copy(alpha = 0.28f))
                     .clickable(onClick = onDismiss),
             )
             Column(
@@ -309,11 +374,25 @@ private fun OverlaySheet(
                     .fillMaxWidth()
                     .softEmboss(32.dp, c.lightShadow, c.darkShadow, 18.dp)
                     .clip(shape)
+                    .then(
+                        if (hazeState != null) {
+                            Modifier.hazeEffect(state = hazeState, style = frostStyle)
+                        } else {
+                            Modifier.background(
+                                Brush.verticalGradient(
+                                    listOf(
+                                        c.glass.copy(alpha = 0.92f),
+                                        c.elevated.copy(alpha = 0.90f),
+                                    ),
+                                ),
+                            )
+                        },
+                    )
                     .background(
                         Brush.verticalGradient(
                             listOf(
-                                c.glass.copy(alpha = 0.96f),
-                                c.elevated.copy(alpha = 0.94f),
+                                c.glass.copy(alpha = if (hazeState != null) 0.42f else 0.96f),
+                                c.elevated.copy(alpha = if (hazeState != null) 0.38f else 0.94f),
                             ),
                         ),
                     )

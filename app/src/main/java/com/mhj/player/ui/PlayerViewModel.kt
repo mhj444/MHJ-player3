@@ -10,10 +10,14 @@ import com.mhj.player.core.model.AppTheme
 import com.mhj.player.core.model.MediaItemModel
 import com.mhj.player.core.model.MediaKind
 import com.mhj.player.core.model.PlayerUiState
+import com.mhj.player.core.playback.engine.AudioEffectsController
 import com.mhj.player.core.playback.engine.PlaybackController
 import com.mhj.player.di.AppContainer
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -23,6 +27,8 @@ class PlayerViewModel(
     private val library: LibraryRepository,
 ) : ViewModel() {
 
+    private val audioEffects = AudioEffectsController()
+
     val playerState: StateFlow<PlayerUiState> = playback.state
     val settings: StateFlow<AppSettings> = settingsStore.settings
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AppSettings())
@@ -30,6 +36,31 @@ class PlayerViewModel(
     val libraryItems: StateFlow<List<MediaItemModel>> = library.observeMedia()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    init {
+        // Media3 session id → Android AudioEffect (dialogue clarity / night mode)
+        viewModelScope.launch {
+            playback.state
+                .map { it.audioSessionId }
+                .distinctUntilChanged()
+                .collect { sessionId -> audioEffects.bindSession(sessionId) }
+        }
+        viewModelScope.launch {
+            combine(
+                settingsStore.settings.map { it.dialogueClarity },
+                settingsStore.settings.map { it.nightModeAudio },
+            ) { dialogue, night -> dialogue to night }
+                .distinctUntilChanged()
+                .collect { (dialogue, night) ->
+                    audioEffects.setDialogueClarity(dialogue)
+                    audioEffects.setNightMode(night)
+                }
+        }
+    }
+
+    override fun onCleared() {
+        audioEffects.release()
+        super.onCleared()
+    }
     fun playDemoMusic() {
         viewModelScope.launch {
             val queue = libraryItems.value

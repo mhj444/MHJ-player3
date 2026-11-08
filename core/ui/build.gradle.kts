@@ -9,7 +9,7 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        minSdk = 26
+        minSdk = 31
     }
 
     buildFeatures {
@@ -36,5 +36,7 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.animation:animation")
+    // Real backdrop blur for frosted glass cards (API 31+)
+    api("dev.chrisbanes.haze:haze-android:1.5.3")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

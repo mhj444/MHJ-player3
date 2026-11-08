@@ -37,6 +37,7 @@ import com.mhj.player.core.ui.theme.MhjPlayerTheme
 import com.mhj.player.core.ui.theme.MhjTheme
 import com.mhj.player.feature.music.MusicPlayerScreen
 import com.mhj.player.feature.video.VideoPlayerScreen
+import dev.chrisbanes.haze.HazeState
 
 class MainActivity : ComponentActivity() {
     private val viewModel: PlayerViewModel by viewModels {
@@ -90,6 +91,7 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
     val pagerState = rememberPagerState(pageCount = { 2 })
     var topOpen by remember { mutableStateOf(false) }
     var bottomOpen by remember { mutableStateOf(false) }
+    val hazeState = remember { HazeState() }
 
     // Phase 1 smoke: if nothing was restored into the session, load the demo music queue.
     LaunchedEffect(library, playerState.queue.size, playerState.current) {
@@ -112,7 +114,7 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
                 },
             ),
     ) {
-        BoardBackground()
+        BoardBackground(hazeState = hazeState)
         Box(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
         HorizontalPager(
             state = pagerState,
@@ -147,6 +149,7 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
             settings = settings,
             onDismiss = { topOpen = false },
             onToggleTheme = viewModel::toggleTheme,
+            hazeState = hazeState,
         )
         BottomAudioDrawer(
             visible = bottomOpen,
@@ -157,6 +160,7 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
             onSpeedClick = viewModel::bumpSpeed,
             onEqClick = { /* DSP Phase 3 hook */ },
             onTimerClick = viewModel::cycleSleepTimer,
+            hazeState = hazeState,
         )
         }
     }

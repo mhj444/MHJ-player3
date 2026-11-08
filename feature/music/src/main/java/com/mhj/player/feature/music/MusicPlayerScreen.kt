@@ -19,11 +19,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -34,7 +29,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -50,6 +44,7 @@ import com.mhj.player.core.ui.R
 import com.mhj.player.core.ui.components.BrandLogoHeader
 import com.mhj.player.core.ui.components.EqualizerVisualizer
 import com.mhj.player.core.ui.components.softEmboss
+import com.mhj.player.core.ui.components.softGoldHalo
 import com.mhj.player.core.ui.theme.MhjColors
 import com.mhj.player.core.ui.theme.MhjTheme
 import kotlin.math.roundToLong
@@ -259,7 +254,7 @@ private fun HeaderChrome(onClick: () -> Unit, dark: Boolean, left: Boolean) {
     )
 }
 
-/** Midnight: bitmap glass play disc + glowing embossed transport glyphs. */
+/** Midnight: bitmap glass play disc + glowing embossed transport glyphs (no Material Icons). */
 @Composable
 private fun MidnightTransport(
     state: PlayerUiState,
@@ -279,31 +274,18 @@ private fun MidnightTransport(
         Box(
             modifier = Modifier
                 .size(100.dp)
-                .clickable(onClick = onPlayPause)
-                .drawBehind {
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            listOf(Color(0xCCD4AF37), Color(0x55D4AF37), Color.Transparent),
-                        ),
-                        radius = size.minDimension * 0.78f,
-                    )
-                },
+                .softGoldHalo(50.dp, bloom = 22.dp, intensity = 0.85f)
+                .clickable(onClick = onPlayPause),
             contentAlignment = Alignment.Center,
         ) {
             Image(
-                painter = painterResource(R.drawable.chrome_mid_play),
+                painter = painterResource(
+                    if (state.isPlaying) R.drawable.chrome_mid_play else R.drawable.chrome_mid_play_tri,
+                ),
                 contentDescription = "Play pause",
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Fit,
             )
-            if (!state.isPlaying) {
-                Icon(
-                    Icons.Filled.PlayArrow,
-                    contentDescription = null,
-                    tint = MhjColors.GoldHi,
-                    modifier = Modifier.size(38.dp),
-                )
-            }
         }
         MidGlyph(R.drawable.chrome_mid_next, onNext, 58.dp)
         MidGlyph(R.drawable.chrome_mid_repeat, onRepeat, 52.dp)
@@ -317,6 +299,7 @@ private fun MidGlyph(res: Int, onClick: () -> Unit, size: Dp) {
         contentDescription = null,
         modifier = Modifier
             .size(size)
+            .softGoldHalo(size / 2, bloom = 14.dp, intensity = 0.55f)
             .clickable(onClick = onClick),
         contentScale = ContentScale.Fit,
     )
@@ -342,24 +325,18 @@ private fun PorcelainTransport(
         Box(
             modifier = Modifier
                 .size(78.dp)
+                .softGoldHalo(39.dp, bloom = 14.dp, intensity = 0.4f)
                 .clickable(onClick = onPlayPause),
             contentAlignment = Alignment.Center,
         ) {
             Image(
-                painter = painterResource(R.drawable.chrome_porc_play),
+                painter = painterResource(
+                    if (state.isPlaying) R.drawable.chrome_porc_play else R.drawable.chrome_porc_play_tri,
+                ),
                 contentDescription = "Play pause",
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Fit,
             )
-            // Bitmap already has pause bars; overlay play arrow when paused
-            if (!state.isPlaying) {
-                Icon(
-                    Icons.Filled.PlayArrow,
-                    contentDescription = null,
-                    tint = MhjColors.GoldLo,
-                    modifier = Modifier.size(30.dp),
-                )
-            }
         }
         PorcelainOrb(R.drawable.chrome_porc_next, onNext, 54.dp)
         PorcelainOrb(R.drawable.chrome_porc_repeat, onRepeat, 50.dp)
@@ -373,6 +350,7 @@ private fun PorcelainOrb(res: Int, onClick: () -> Unit, size: Dp) {
         contentDescription = null,
         modifier = Modifier
             .size(size)
+            .softGoldHalo(size / 2, bloom = 10.dp, intensity = 0.35f)
             .clickable(onClick = onClick),
         contentScale = ContentScale.Fit,
     )
@@ -396,6 +374,7 @@ private fun BottomNav(dark: Boolean, onHome: () -> Unit, onLibrary: () -> Unit) 
                 contentDescription = "Home",
                 modifier = Modifier
                     .height(72.dp)
+                    .softGoldHalo(18.dp, bloom = 12.dp, intensity = 0.5f)
                     .clickable(onClick = onHome),
                 contentScale = ContentScale.Fit,
             )
@@ -404,12 +383,13 @@ private fun BottomNav(dark: Boolean, onHome: () -> Unit, onLibrary: () -> Unit) 
                 contentDescription = "Library",
                 modifier = Modifier
                     .height(72.dp)
+                    .softGoldHalo(18.dp, bloom = 12.dp, intensity = 0.45f)
                     .clickable(onClick = onLibrary),
                 contentScale = ContentScale.Fit,
             )
         }
     } else {
-        // Frosted glass bar + deeply recessed tiles
+        // Frosted porcelain nav — bitmap home/library marks from boards/feedback
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -428,82 +408,28 @@ private fun BottomNav(dark: Boolean, onHome: () -> Unit, onLibrary: () -> Unit) 
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 10.dp, horizontal = 12.dp),
+                    .padding(vertical = 8.dp, horizontal = 12.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                RecessedNavTile(Icons.Filled.Home, "Home", true, onHome)
-                RecessedNavTile(Icons.Outlined.Folder, "Library", false, onLibrary)
+                Image(
+                    painter = painterResource(R.drawable.chrome_porc_nav_home),
+                    contentDescription = "Home",
+                    modifier = Modifier
+                        .height(64.dp)
+                        .clickable(onClick = onHome),
+                    contentScale = ContentScale.Fit,
+                )
+                Image(
+                    painter = painterResource(R.drawable.chrome_porc_nav_library),
+                    contentDescription = "Library",
+                    modifier = Modifier
+                        .height(64.dp)
+                        .clickable(onClick = onLibrary),
+                    contentScale = ContentScale.Fit,
+                )
             }
         }
-    }
-}
-
-@Composable
-private fun IlluminatedNavItem(
-    icon: ImageVector,
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .clickable(onClick = onClick)
-            .drawBehind {
-                if (selected) {
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            listOf(Color(0x55D4AF37), Color.Transparent),
-                        ),
-                        radius = size.maxDimension * 0.55f,
-                    )
-                }
-            }
-            .padding(horizontal = 16.dp, vertical = 4.dp),
-    ) {
-        Icon(
-            icon,
-            label,
-            tint = if (selected) MhjColors.GoldHi else MhjColors.Gold.copy(alpha = 0.72f),
-            modifier = Modifier.size(26.dp),
-        )
-        Text(
-            label,
-            color = if (selected) MhjColors.GoldHi else MhjColors.Gold.copy(alpha = 0.72f),
-            fontSize = 11.sp,
-            fontFamily = FontFamily.Serif,
-        )
-    }
-}
-
-@Composable
-private fun RecessedNavTile(
-    icon: ImageVector,
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    val c = MhjTheme.colors
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .width(108.dp)
-            .softEmboss(
-                16.dp,
-                // inverted for deep recess: dark TL, light BR
-                light = c.darkShadow.copy(alpha = 0.35f),
-                dark = c.lightShadow.copy(alpha = 0.65f),
-                elevation = 8.dp,
-            )
-            .clip(RoundedCornerShape(16.dp))
-            .background(
-                if (selected) Color(0xD8E6D8C4) else Color(0x66EFE6D8),
-            )
-            .clickable(onClick = onClick)
-            .padding(vertical = 8.dp),
-    ) {
-        Icon(icon, label, tint = if (selected) c.primary else c.muted, modifier = Modifier.size(22.dp))
-        Text(label, color = if (selected) c.primary else c.muted, fontSize = 11.sp, fontFamily = FontFamily.Serif)
     }
 }
 

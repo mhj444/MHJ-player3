@@ -30,6 +30,8 @@ import androidx.compose.ui.unit.dp
 import com.mhj.player.core.ui.R
 import com.mhj.player.core.ui.theme.MhjColors
 import com.mhj.player.core.ui.theme.MhjTheme
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
 
 /** Soft dual-shadow emboss — no harsh black strokes / no blown-out white halos. */
 fun Modifier.softEmboss(
@@ -99,10 +101,59 @@ fun Modifier.softGoldHairline(radius: Dp = 28.dp): Modifier = border(
     shape = RoundedCornerShape(radius),
 )
 
+/**
+ * Shiny gold light halo via radial gradient + colored shadow (Compose, no Material glow).
+ * Matches board chrome: soft warm bloom around embossed gold controls.
+ */
+fun Modifier.softGoldHalo(
+    radius: Dp = 28.dp,
+    bloom: Dp = 18.dp,
+    intensity: Float = 0.55f,
+): Modifier = drawBehind {
+    val e = bloom.toPx()
+    val r = radius.toPx()
+    // Colored gold shadow ring
+    drawIntoCanvas { canvas ->
+        val paint = Paint()
+        val fw = paint.asFrameworkPaint()
+        fw.isAntiAlias = true
+        fw.setShadowLayer(
+            e * 1.4f,
+            0f,
+            0f,
+            Color(0xFFD4AF37).copy(alpha = (0.42f * intensity).coerceIn(0.12f, 0.65f)).toArgb(),
+        )
+        fw.color = Color.Transparent.toArgb()
+        canvas.drawRoundRect(0f, 0f, size.width, size.height, r, r, paint)
+        fw.setShadowLayer(0f, 0f, 0f, 0)
+    }
+    // Soft radial bloom
+    drawCircle(
+        brush = Brush.radialGradient(
+            colors = listOf(
+                Color(0xFFD4AF37).copy(alpha = 0.28f * intensity),
+                Color(0xFFD4AF37).copy(alpha = 0.10f * intensity),
+                Color.Transparent,
+            ),
+            center = Offset(size.width / 2f, size.height / 2f),
+            radius = size.minDimension * 0.72f,
+        ),
+        radius = size.minDimension * 0.72f,
+        center = Offset(size.width / 2f, size.height / 2f),
+    )
+}
+
 @Composable
-fun BoardBackground(modifier: Modifier = Modifier) {
+fun BoardBackground(
+    modifier: Modifier = Modifier,
+    hazeState: HazeState? = null,
+) {
     val dark = MhjTheme.colors.isDark
-    Box(modifier = modifier.fillMaxSize()) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .then(if (hazeState != null) Modifier.hazeSource(hazeState) else Modifier),
+    ) {
         Image(
             painter = painterResource(
                 if (dark) R.drawable.bg_midnight_board else R.drawable.bg_porcelain_board,
