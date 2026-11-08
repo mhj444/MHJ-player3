@@ -17,6 +17,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Paint
@@ -102,44 +103,46 @@ fun Modifier.softGoldHairline(radius: Dp = 28.dp): Modifier = border(
 )
 
 /**
- * Shiny gold light halo via radial gradient + colored shadow (Compose, no Material glow).
- * Matches board chrome: soft warm bloom around embossed gold controls.
+ * Soft gold light halo — SoftLight bloom + colored (never black) glow shadow.
+ * Avoids setShadowLayer black mattes that crust bitmap edges.
  */
 fun Modifier.softGoldHalo(
     radius: Dp = 28.dp,
     bloom: Dp = 18.dp,
     intensity: Float = 0.55f,
 ): Modifier = drawBehind {
-    val e = bloom.toPx()
-    val r = radius.toPx()
-    // Colored gold shadow ring
-    drawIntoCanvas { canvas ->
-        val paint = Paint()
-        val fw = paint.asFrameworkPaint()
-        fw.isAntiAlias = true
-        fw.setShadowLayer(
-            e * 1.4f,
-            0f,
-            0f,
-            Color(0xFFD4AF37).copy(alpha = (0.42f * intensity).coerceIn(0.12f, 0.65f)).toArgb(),
-        )
-        fw.color = Color.Transparent.toArgb()
-        canvas.drawRoundRect(0f, 0f, size.width, size.height, r, r, paint)
-        fw.setShadowLayer(0f, 0f, 0f, 0)
-    }
-    // Soft radial bloom
+    val center = Offset(size.width / 2f, size.height / 2f)
+    val rad = size.minDimension * 0.72f
+    val gold = Color(0xFFE8C460)
+    // SoftLight pool (no dark fringe)
     drawCircle(
         brush = Brush.radialGradient(
             colors = listOf(
-                Color(0xFFD4AF37).copy(alpha = 0.28f * intensity),
-                Color(0xFFD4AF37).copy(alpha = 0.10f * intensity),
+                gold.copy(alpha = (0.55f * intensity).coerceIn(0.08f, 0.7f)),
+                gold.copy(alpha = (0.22f * intensity).coerceIn(0.04f, 0.35f)),
                 Color.Transparent,
             ),
-            center = Offset(size.width / 2f, size.height / 2f),
-            radius = size.minDimension * 0.72f,
+            center = center,
+            radius = rad,
         ),
-        radius = size.minDimension * 0.72f,
-        center = Offset(size.width / 2f, size.height / 2f),
+        radius = rad,
+        center = center,
+        blendMode = BlendMode.Softlight,
+    )
+    // Additive-ish colored glow (gold RGB only)
+    drawCircle(
+        brush = Brush.radialGradient(
+            colors = listOf(
+                gold.copy(alpha = (0.32f * intensity).coerceIn(0.06f, 0.45f)),
+                gold.copy(alpha = (0.10f * intensity).coerceIn(0.02f, 0.18f)),
+                Color.Transparent,
+            ),
+            center = center,
+            radius = rad * 0.92f,
+        ),
+        radius = rad * 0.92f,
+        center = center,
+        blendMode = BlendMode.Plus,
     )
 }
 

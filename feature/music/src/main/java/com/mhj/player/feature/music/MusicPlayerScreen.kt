@@ -257,7 +257,7 @@ private fun HeaderChrome(onClick: () -> Unit, dark: Boolean, left: Boolean) {
 /** Midnight: bitmap glass play disc + glowing embossed transport glyphs (no Material Icons). */
 @Composable
 private fun MidnightTransport(
-    state: PlayerUiState,
+    @Suppress("UNUSED_PARAMETER") state: PlayerUiState,
     onPlayPause: () -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
@@ -271,17 +271,16 @@ private fun MidnightTransport(
     ) {
         MidGlyph(R.drawable.chrome_mid_shuffle, onShuffle, 52.dp)
         MidGlyph(R.drawable.chrome_mid_prev, onPrevious, 58.dp)
+        // Always board double-ring pause/play bitmap — never flat play-triangle swap
         Box(
             modifier = Modifier
-                .size(100.dp)
-                .softGoldHalo(50.dp, bloom = 22.dp, intensity = 0.85f)
+                .size(104.dp)
+                .softGoldHalo(52.dp, bloom = 24.dp, intensity = 0.7f)
                 .clickable(onClick = onPlayPause),
             contentAlignment = Alignment.Center,
         ) {
             Image(
-                painter = painterResource(
-                    if (state.isPlaying) R.drawable.chrome_mid_play else R.drawable.chrome_mid_play_tri,
-                ),
+                painter = painterResource(R.drawable.chrome_mid_play),
                 contentDescription = "Play pause",
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Fit,
