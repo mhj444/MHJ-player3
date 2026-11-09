@@ -36,4 +36,7 @@ dependencies {
     api("androidx.media3:media3-session:$media3")
     api("androidx.media3:media3-ui:$media3")
     api("androidx.media3:media3-common:$media3")
+
+    // On-device ASR (media audio → text). Model downloaded once at runtime.
+    implementation("com.alphacephei:vosk-android:0.3.47")
 }

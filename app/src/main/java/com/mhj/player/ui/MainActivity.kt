@@ -3,6 +3,7 @@ package com.mhj.player.ui
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -34,6 +35,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
@@ -43,6 +45,7 @@ import com.mhj.player.core.model.MediaKind
 import com.mhj.player.core.ui.components.BoardBackground
 import com.mhj.player.core.ui.components.BottomAudioDrawer
 import com.mhj.player.core.ui.components.TopMenuDrawer
+import com.mhj.player.core.ui.components.TranscriptViewerOverlay
 import com.mhj.player.core.ui.gestures.playerEdgeSwipes
 import com.mhj.player.core.ui.theme.MhjPlayerTheme
 import com.mhj.player.core.ui.theme.MhjTheme
@@ -115,7 +118,10 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
     val filter by viewModel.filter.collectAsStateWithLifecycle()
     val selectedIds by viewModel.selectedIds.collectAsStateWithLifecycle()
     val scanning by viewModel.scanning.collectAsStateWithLifecycle()
+    val transcript by viewModel.transcriptState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val configuration = LocalConfiguration.current
+    val landscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     val pagerState = rememberPagerState(initialPage = PAGE_MUSIC, pageCount = { 2 })
     val scope = rememberCoroutineScope()
@@ -128,6 +134,8 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
     val videoActive by remember {
         derivedStateOf { pagerState.currentPage == PAGE_VIDEO }
     }
+    // Landscape video owns horizontal drag for seek — do not swipe back to music
+    val lockPagerForVideoGestures = videoActive && landscape
 
     fun persistUri(uri: Uri) {
         runCatching {
@@ -201,11 +209,15 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
             }
     }
 
-    BackHandler(enabled = topOpen || bottomOpen || pagerState.currentPage != PAGE_MUSIC) {
+    BackHandler(
+        enabled = transcript.viewerText != null || topOpen || bottomOpen ||
+            (pagerState.currentPage != PAGE_MUSIC && !lockPagerForVideoGestures),
+    ) {
         when {
+            transcript.viewerText != null -> viewModel.dismissTranscriptViewer()
             bottomOpen -> bottomOpen = false
             topOpen -> topOpen = false
-            pagerState.currentPage != PAGE_MUSIC -> scope.launch {
+            pagerState.currentPage != PAGE_MUSIC && !lockPagerForVideoGestures -> scope.launch {
                 pagerState.animateScrollToPage(PAGE_MUSIC)
             }
         }
@@ -236,7 +248,7 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
             HorizontalPager(
                 state = pagerState,
                 modifier = Modifier.fillMaxSize(),
-                userScrollEnabled = !topOpen && !bottomOpen,
+                userScrollEnabled = !topOpen && !bottomOpen && !lockPagerForVideoGestures,
                 beyondViewportPageCount = 0,
             ) { page ->
                 when (page) {
@@ -307,8 +319,28 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
                     settings = settings,
                     abLabel = playerState.abLabel,
                     abActive = playerState.abLoopActive,
+                    transcriptRunning = transcript.isRunning,
+                    transcriptDownloading = transcript.isDownloading,
+                    transcriptProgress = transcript.progress,
+                    transcriptStatusFa = transcript.statusFa,
+                    transcriptErrorFa = transcript.errorFa,
                     onDismiss = { bottomOpen = false },
-                    onDialogueClarity = viewModel::setDialogueClarity,
+                    onToggleTranscript = {
+                        if (playerState.current == null) {
+                            Toast.makeText(context, "رسانه‌ای در حال پخش نیست", Toast.LENGTH_SHORT).show()
+                        } else {
+                            viewModel.toggleTranscription()
+                        }
+                    },
+                    onOpenTranscriptFolder = {
+                        if (!viewModel.openTranscriptFolder()) {
+                            Toast.makeText(
+                                context,
+                                transcript.errorFa ?: "هنوز متنی ذخیره نشده است",
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        }
+                    },
                     onNightMode = viewModel::setNightMode,
                     onSpeedChange = viewModel::setPlaybackSpeed,
                     onSpeedNudge = viewModel::nudgeSpeed,
@@ -331,6 +363,13 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
                     hazeState = hazeState,
                 )
             }
+
+            TranscriptViewerOverlay(
+                visible = transcript.viewerText != null,
+                title = transcript.viewerTitle.orEmpty(),
+                body = transcript.viewerText.orEmpty(),
+                onDismiss = viewModel::dismissTranscriptViewer,
+            )
         }
     }
 }

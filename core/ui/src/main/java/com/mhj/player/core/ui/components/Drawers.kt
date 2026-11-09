@@ -198,8 +198,14 @@ fun BottomAudioDrawer(
     settings: AppSettings,
     abLabel: String = "A-B",
     abActive: Boolean = false,
+    transcriptRunning: Boolean = false,
+    transcriptDownloading: Boolean = false,
+    transcriptProgress: Float = 0f,
+    transcriptStatusFa: String = "تبدیل گفتار رسانه به متن",
+    transcriptErrorFa: String? = null,
     onDismiss: () -> Unit,
-    onDialogueClarity: (Boolean) -> Unit,
+    onToggleTranscript: () -> Unit = {},
+    onOpenTranscriptFolder: () -> Unit = {},
     onNightMode: (Boolean) -> Unit,
     onSpeedChange: (Float) -> Unit,
     onSpeedNudge: (Float) -> Unit,
@@ -258,12 +264,15 @@ fun BottomAudioDrawer(
                     )
                 }
                 Spacer(Modifier.height(16.dp))
-                GlassToggleCard(
-                    iconRes = if (dark) R.drawable.icon_mid_dialogue else R.drawable.icon_porc_dialogue,
-                    label = "Dialogue Clarity Boost",
-                    subtitle = "شفافیت گفتگو",
-                    checked = settings.dialogueClarity,
-                    onChange = onDialogueClarity,
+                TranscriptRow(
+                    dark = dark,
+                    running = transcriptRunning,
+                    downloading = transcriptDownloading,
+                    progress = transcriptProgress,
+                    statusFa = transcriptStatusFa,
+                    errorFa = transcriptErrorFa,
+                    onToggle = onToggleTranscript,
+                    onOpenFolder = onOpenTranscriptFolder,
                 )
                 Spacer(Modifier.height(10.dp))
                 GlassToggleCard(
@@ -845,6 +854,111 @@ private fun OverlaySheet(
                     .softGoldHairline(32.dp)
                     .padding(horizontal = 20.dp, vertical = 18.dp),
                 content = body,
+            )
+        }
+    }
+}
+
+/**
+ * Unified speech-to-text row: main press toggles transcription; trailing folder opens saved text.
+ * Replaces the old Dialogue Clarity toggle (pink-marked position → folder).
+ */
+@Composable
+private fun TranscriptRow(
+    dark: Boolean,
+    running: Boolean,
+    downloading: Boolean,
+    progress: Float,
+    statusFa: String,
+    errorFa: String?,
+    onToggle: () -> Unit,
+    onOpenFolder: () -> Unit,
+) {
+    val c = MhjTheme.colors
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .softEmboss(18.dp, c.lightShadow, c.darkShadow, 10.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        if (dark) Color(0xAA1C1C22) else Color(0xEEF7F0E6),
+                        if (dark) Color(0x99141418) else Color(0xDDEFE4D4),
+                    ),
+                ),
+            )
+            .softGoldHairline(18.dp)
+            .padding(horizontal = 10.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .clip(RoundedCornerShape(12.dp))
+                .clickable(onClick = onToggle)
+                .padding(horizontal = 6.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Image(
+                painter = painterResource(
+                    if (dark) R.drawable.icon_mid_dialogue else R.drawable.icon_porc_dialogue,
+                ),
+                contentDescription = null,
+                modifier = Modifier.size(26.dp),
+                contentScale = ContentScale.Fit,
+            )
+            Column(Modifier.weight(1f)) {
+                Text(
+                    if (running) "توقف تبدیل" else "تبدیل به متن",
+                    color = c.onBackground,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    errorFa ?: statusFa,
+                    color = if (errorFa != null) Color(0xFFE8A0A0) else c.primary.copy(alpha = 0.9f),
+                    fontSize = 12.sp,
+                    maxLines = 2,
+                )
+                if (downloading || (running && progress in 0f..0.999f)) {
+                    Spacer(Modifier.height(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(3.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(c.controlFill),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(progress.coerceIn(0.02f, 1f))
+                                .height(3.dp)
+                                .background(MhjColors.Gold),
+                        )
+                    }
+                }
+            }
+        }
+        // Folder control — same row, where the old toggle sat (pink mark)
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(c.controlFill)
+                .border(1.dp, MhjColors.Gold.copy(alpha = 0.65f), CircleShape)
+                .clickable(onClick = onOpenFolder),
+            contentAlignment = Alignment.Center,
+        ) {
+            Image(
+                painter = painterResource(
+                    if (dark) R.drawable.icon_mid_library else R.drawable.icon_porc_library,
+                ),
+                contentDescription = "پوشه متن",
+                modifier = Modifier.size(22.dp),
+                contentScale = ContentScale.Fit,
             )
         }
     }

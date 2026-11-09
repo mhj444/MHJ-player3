@@ -16,12 +16,13 @@ import com.mhj.player.core.model.PlayerUiState
 import com.mhj.player.core.model.PlaylistModel
 import com.mhj.player.core.playback.engine.AudioEffectsController
 import com.mhj.player.core.playback.engine.PlaybackController
+import com.mhj.player.core.playback.transcript.TranscriptionController
+import com.mhj.player.core.playback.transcript.TranscriptionUiState
 import com.mhj.player.di.AppContainer
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
@@ -33,6 +34,7 @@ class PlayerViewModel(
     private val settingsStore: SettingsDataStore,
     private val library: LibraryRepository,
     private val scanner: MediaLibraryScanner,
+    private val transcription: TranscriptionController,
 ) : ViewModel() {
 
     private val audioEffects = AudioEffectsController()
@@ -40,6 +42,7 @@ class PlayerViewModel(
     val playerState: StateFlow<PlayerUiState> = playback.state
     val settings: StateFlow<AppSettings> = settingsStore.settings
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AppSettings())
+    val transcriptState: StateFlow<TranscriptionUiState> = transcription.state
 
     private val libraryFilter = MutableStateFlow(LibraryFilter())
     val filter: StateFlow<LibraryFilter> = libraryFilter
@@ -69,15 +72,10 @@ class PlayerViewModel(
                 .collect { sessionId -> audioEffects.bindSession(sessionId) }
         }
         viewModelScope.launch {
-            combine(
-                settingsStore.settings.map { it.dialogueClarity },
-                settingsStore.settings.map { it.nightModeAudio },
-            ) { dialogue, night -> dialogue to night }
+            settingsStore.settings
+                .map { it.nightModeAudio }
                 .distinctUntilChanged()
-                .collect { (dialogue, night) ->
-                    audioEffects.setDialogueClarity(dialogue)
-                    audioEffects.setNightMode(night)
-                }
+                .collect { night -> audioEffects.setNightMode(night) }
         }
         viewModelScope.launch {
             // Increment play count when the current media id changes while playing
@@ -157,14 +155,6 @@ class PlayerViewModel(
         }
     }
 
-    fun setDialogueClarity(enabled: Boolean) {
-        viewModelScope.launch {
-            audioEffects.bindSession(audioSessionId())
-            audioEffects.setDialogueClarity(enabled)
-            settingsStore.setDialogueClarity(enabled)
-        }
-    }
-
     fun setNightMode(enabled: Boolean) {
         viewModelScope.launch {
             audioEffects.bindSession(audioSessionId())
@@ -178,9 +168,21 @@ class PlayerViewModel(
         val session = audioSessionId()
         if (session <= 0) return
         audioEffects.bindSession(session)
-        audioEffects.setDialogueClarity(settings.value.dialogueClarity)
         audioEffects.setNightMode(settings.value.nightModeAudio)
     }
+
+    fun toggleTranscription() {
+        val current = playerState.value.current ?: return
+        if (current.uri.isBlank()) return
+        transcription.toggleForMedia(current.id, current.title, current.uri)
+    }
+
+    fun openTranscriptFolder(): Boolean {
+        val current = playerState.value.current
+        return transcription.openViewerFor(current?.id, current?.title)
+    }
+
+    fun dismissTranscriptViewer() = transcription.dismissViewer()
 
     fun bumpSpeed() {
         viewModelScope.launch {
@@ -341,6 +343,7 @@ class PlayerViewModel(
                         settingsStore = container.settingsStore,
                         library = container.libraryRepository,
                         scanner = container.mediaScanner,
+                        transcription = container.transcription,
                     ) as T
                 }
             }
