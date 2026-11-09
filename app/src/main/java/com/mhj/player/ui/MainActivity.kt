@@ -288,6 +288,38 @@ private fun PlayerRoot(
         scope.launch { pagerState.animateScrollToPage(PAGE_MUSIC) }
     }
 
+    val listenPositions by viewModel.listenPositions.collectAsStateWithLifecycle()
+    val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
+    var backupStatus by remember { mutableStateOf<String?>(null) }
+    val backupScope = androidx.compose.runtime.rememberCoroutineScope()
+    val backupSaveLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json"),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        backupScope.launch {
+            backupStatus = runCatching {
+                val text = viewModel.buildBackup()
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    context.contentResolver.openOutputStream(uri, "wt")?.use { it.write(text.toByteArray()) }
+                }
+                L.t("پشتیبان ذخیره شد. این فایل را به گوشی جدید بفرستید و آنجا «بازیابی از فایل» را بزنید.")
+            }.getOrElse { L.pick("ذخیره نشد: ", "Could not save: ") + (it.message ?: "") }
+        }
+    }
+    val backupOpenLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        backupStatus = L.t("در حال بازیابی…")
+        backupScope.launch {
+            backupStatus = runCatching {
+                val text = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)?.use { it.readBytes().decodeToString() }
+                } ?: ""
+                viewModel.restoreBackup(text)
+            }.getOrElse { L.pick("بازیابی نشد: ", "Could not restore: ") + (it.message ?: "") }
+        }
+    }
     val pickVideoLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri: Uri? ->
@@ -405,6 +437,11 @@ private fun PlayerRoot(
                         onToggleRemaining = { viewModel.toggleShowRemaining() },
                         isFavorite = isFavorite,
                         onToggleFavorite = viewModel::toggleFavoriteCurrent,
+                        onSeekBy = viewModel::seekBy,
+                        onBookmark = {
+                            val at = viewModel.addBookmarkNow()
+                            if (at != null) Toast.makeText(context, L.pick("نشانک ذخیره شد: ", "Bookmark saved: ") + com.mhj.player.core.ui.components.Fa.time(at), Toast.LENGTH_SHORT).show()
+                        },
                         speed = settings.playbackSpeed,
                     )
                 }
@@ -477,6 +514,11 @@ private fun PlayerRoot(
                     },
                     onDeleteSelectedAsk = { deleteSelectedAsk = true },
                     onOpenFavorites = viewModel::openFavoritesPlaylist,
+                    listenPositions = listenPositions,
+                    onPlayFolder = { list, item -> viewModel.playFolder(list, item); topOpen = false },
+                    onBackupSave = { backupSaveLauncher.launch("MHJ-Backup.json") },
+                    onBackupRestore = { backupOpenLauncher.launch(arrayOf("application/json", "text/plain", "application/octet-stream", "*/*")) },
+                    backupStatus = backupStatus,
                     onRenamePlaylist = viewModel::renamePlaylist,
                     onSetEnglish = { viewModel.setEnglishUi(it) },
                     onDeletePlaylist = viewModel::deletePlaylist,
@@ -489,6 +531,7 @@ private fun PlayerRoot(
                     settings = settings,
                     abActive = playerState.abLoopActive,
                     abHalf = playerState.abPointAMs != null && playerState.abPointBMs == null,
+                    bookmarks = bookmarks,
                     actions = remember(viewModel) {
                         AudioActions(
                             onDialogue = { viewModel.setDialogueClarity(it) },
@@ -503,6 +546,10 @@ private fun PlayerRoot(
                             onEqGain = { i, db -> viewModel.setEqGain(i, db) },
                             onEqPreamp = { viewModel.setEqPreamp(it) },
                             onEqPreset = { viewModel.applyEqPreset(it) },
+                            onOpenBookmark = { b ->
+                                if (!viewModel.openBookmark(b)) Toast.makeText(context, L.t("فایل این نشانک در گوشی نیست"), Toast.LENGTH_SHORT).show()
+                            },
+                            onDeleteBookmark = { viewModel.deleteBookmark(it.id) },
                             onTimerMinutes = viewModel::setSleepTimerMinutes,
                             onTimerAtEnd = { viewModel.setSleepAtEnd() },
                             onTimerOff = { viewModel.cancelSleep() },
@@ -601,7 +648,7 @@ private fun PlayerRoot(
                 playlists = pickerData,
                 onPick = { pl ->
                     val items = pickItems.orEmpty()
-                    items.forEach { viewModel.addMediaToPlaylist(pl.id, it.id) }
+                    viewModel.addManyToPlaylist(pl.id, items.map { it.id })
                     addToPlaylistAsk = null
                     viewModel.clearSelection()
                     Toast.makeText(context, if (pl.hasAll) L.pick("از قبل در «${pl.name}» بود", "Already in “${pl.name}”") else L.pick("به «${pl.name}» اضافه شد", "Added to “${pl.name}”"), Toast.LENGTH_SHORT).show()

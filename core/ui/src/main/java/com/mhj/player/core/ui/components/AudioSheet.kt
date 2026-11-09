@@ -23,6 +23,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import com.mhj.player.core.model.Bookmark
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Bedtime
 import androidx.compose.material.icons.outlined.DeleteOutline
@@ -70,7 +74,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private enum class AudioPage { ROOT, SPEED, TIMER, EQUALIZER }
+private enum class AudioPage { ROOT, SPEED, TIMER, EQUALIZER, BOOKMARKS }
 
 /** Everything the sound panel can do; the app fills it in. */
 class AudioActions(
@@ -86,6 +90,8 @@ class AudioActions(
     val onTimerMinutes: (Int) -> Unit,
     val onTimerAtEnd: () -> Unit,
     val onTimerOff: () -> Unit,
+    val onOpenBookmark: (Bookmark) -> Unit = {},
+    val onDeleteBookmark: (Bookmark) -> Unit = {},
 )
 
 @Composable
@@ -94,6 +100,7 @@ fun BottomAudioDrawer(
     settings: AppSettings,
     abActive: Boolean,
     abHalf: Boolean,
+    bookmarks: List<Bookmark> = emptyList(),
     actions: AudioActions,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
@@ -119,7 +126,7 @@ fun BottomAudioDrawer(
         fromTop = false,
         heightFraction = when (page) {
             AudioPage.ROOT -> 0.66f
-            AudioPage.EQUALIZER -> 0.90f
+            AudioPage.EQUALIZER, AudioPage.BOOKMARKS -> 0.90f
             else -> 0.84f
         },
         onDismiss = { page = AudioPage.ROOT; onDismiss() },
@@ -128,10 +135,11 @@ fun BottomAudioDrawer(
     ) {
         val back = { page = AudioPage.ROOT }
         when (page) {
-            AudioPage.ROOT -> RootPage(settings, abActive, abHalf, leftMs, actions) { page = it }
+            AudioPage.ROOT -> RootPage(settings, abActive, abHalf, leftMs, bookmarks.size, actions) { page = it }
             AudioPage.SPEED -> SpeedPage(settings, actions, back)
             AudioPage.TIMER -> TimerPage(settings, leftMs, actions, back)
             AudioPage.EQUALIZER -> EqPage(settings, actions, back)
+            AudioPage.BOOKMARKS -> BookmarksPage(bookmarks, actions, back)
         }
     }
 }
@@ -148,6 +156,7 @@ private fun ColumnScope.RootPage(
     abActive: Boolean,
     abHalf: Boolean,
     leftMs: Long,
+    bookmarkCount: Int,
     a: AudioActions,
     go: (AudioPage) -> Unit,
 ) {
@@ -175,6 +184,14 @@ private fun ColumnScope.RootPage(
                 Modifier.weight(1f).height(108.dp), active = s.eqEnabled && s.eqGains.any { it != 0f }) { go(AudioPage.EQUALIZER) }
             FeatureTile(Icons.Outlined.Timer, L.t("تایمر خواب"), timerValue(s, leftMs),
                 Modifier.weight(1f).height(108.dp), active = s.sleepAtEnd || s.sleepAtMs > 0) { go(AudioPage.TIMER) }
+        }
+        FeatureRow(
+            Icons.Outlined.BookmarkBorder, L.t("نشانک‌ها"),
+            if (bookmarkCount == 0) L.t("برای ساختن، روی عکس آهنگ انگشت نگه دارید")
+            else L.pick("${Fa.num(bookmarkCount)} نشانک", "$bookmarkCount bookmarks"),
+            onClick = { go(AudioPage.BOOKMARKS) },
+        ) {
+            Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, null, tint = MhjColors.Gold, modifier = Modifier.width(24.dp))
         }
         Spacer(Modifier.height(4.dp))
     }
@@ -337,3 +354,41 @@ private fun ColumnScope.EqPage(s: AppSettings, a: AudioActions, onBack: () -> Un
     }
 }
 
+
+
+// ---------------------------------------------------------------- bookmarks
+
+@Composable
+private fun ColumnScope.BookmarksPage(list: List<Bookmark>, a: AudioActions, onBack: () -> Unit) {
+    val c = MhjTheme.colors
+    SheetTitle(L.t("نشانک‌ها"), L.t("روی عکس آهنگ انگشت نگه دارید تا همان لحظه نشانک شود"), onBack)
+    if (list.isEmpty()) {
+        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+            Text(L.t("هنوز نشانکی ندارید"), color = c.muted, fontSize = 14.sp)
+        }
+        return
+    }
+    val fmt = remember { SimpleDateFormat("yyyy/MM/dd", Locale.US) }
+    androidx.compose.foundation.lazy.LazyColumn(
+        Modifier.weight(1f).fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp, 8.dp),
+    ) {
+        items(list.size, key = { list[it].id }) { i ->
+            val b = list[i]
+            RaisedCard(Modifier.fillMaxWidth(), radius = 18.dp, depth = 5.dp, padding = 12.dp, onClick = { a.onOpenBookmark(b) }) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.width(64.dp), contentAlignment = Alignment.Center) {
+                        Text(Fa.time(b.positionMs), color = if (c.isDark) MhjColors.GoldHi else MhjColors.GoldLo, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(b.title, color = c.onBackground, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(Fa.digits(fmt.format(Date(b.createdAt))), color = c.muted, fontSize = 11.sp)
+                    }
+                    RaisedIconButton(Icons.Outlined.DeleteOutline, L.t("حذف"), { a.onDeleteBookmark(b) }, size = 40.dp, iconSize = 19.dp)
+                }
+            }
+        }
+    }
+}

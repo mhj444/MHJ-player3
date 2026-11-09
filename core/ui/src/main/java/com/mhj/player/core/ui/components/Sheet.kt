@@ -10,6 +10,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -91,7 +93,9 @@ fun MhjSheet(
                     .clip(shape)
                     .then(if (hazeState != null) Modifier.hazeEffect(state = hazeState, style = style) else Modifier.background(style.backgroundColor))
                     .border(1.dp, Emboss.rim(0.6f), shape)
-                    .clickable(remember { MutableInteractionSource() }, indication = null) {},
+                    // Catch touches on empty parts of the panel (so they don't close it) without
+                    // taking taps away from the rows inside.
+                    .pointerInput(Unit) { awaitEachGesture { awaitFirstDown(requireUnconsumed = false) } },
             ) {
                 if (!fromTop) Handle(onDismiss, down = true)
                 Column(

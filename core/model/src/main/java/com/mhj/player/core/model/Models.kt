@@ -150,3 +150,12 @@ data class LibraryFilter(
     val playedOnly: Boolean? = null, // true=played, false=unplayed, null=all
     val sort: LibrarySort = LibrarySort.NAME,
 )
+
+/** A saved moment inside a song / audiobook. */
+data class Bookmark(
+    val id: Long,
+    val mediaId: String,
+    val title: String,
+    val positionMs: Long,
+    val createdAt: Long,
+)

@@ -15,6 +15,8 @@ import com.mhj.player.core.model.AppTheme
 import com.mhj.player.core.model.LibraryFilter
 import com.mhj.player.core.model.MediaItemModel
 import com.mhj.player.core.model.MediaKind
+import com.mhj.player.core.model.Bookmark
+import com.mhj.player.core.data.memory.ListenMemory
 import com.mhj.player.core.model.PlayerUiState
 import com.mhj.player.core.model.PlaylistModel
 import com.mhj.player.core.playback.engine.PlaybackController
@@ -170,6 +172,44 @@ class PlayerViewModel(
             items.getOrNull(startIndex)?.let { library.recordPlay(it.id) }
             library.refreshSmartPlaylists()
         }
+    }
+
+    // ---------------------------------------------------------------- listening memory
+
+    /** Where each long file was left (ms), or ListenMemory.FINISHED. */
+    val listenPositions: StateFlow<Map<String, Long>> = ListenMemory.positions
+    val bookmarks: StateFlow<List<Bookmark>> = ListenMemory.bookmarks
+
+    /** Saves the current moment as a bookmark; returns its time, or null when nothing plays. */
+    fun addBookmarkNow(): Long? {
+        val st = playerState.value
+        val cur = st.current ?: return null
+        val pos = playback.playerOrNull()?.currentPosition ?: st.positionMs
+        ListenMemory.addBookmark(cur.id, cur.title, pos)
+        return pos
+    }
+
+    fun deleteBookmark(id: Long) = ListenMemory.removeBookmark(id)
+
+    /** Opens the bookmark's file (from the library) at its moment. */
+    fun openBookmark(b: Bookmark): Boolean {
+        if (playerState.value.current?.id == b.mediaId) {
+            playback.seekTo(b.positionMs)
+            if (!playerState.value.isPlaying) playback.togglePlayPause()
+            return true
+        }
+        val item = allLibraryItems.value.firstOrNull { it.id == b.mediaId } ?: return false
+        viewModelScope.launch {
+            playback.awaitConnected()
+            playback.play(listOf(item), 0, b.positionMs)
+        }
+        return true
+    }
+
+    /** Plays a whole folder in name order, from [start]. */
+    fun playFolder(items: List<MediaItemModel>, start: MediaItemModel) {
+        val idx = items.indexOfFirst { it.id == start.id }.coerceAtLeast(0)
+        playQueue(items, idx)
     }
 
     fun togglePlayPause() = playback.togglePlayPause()
@@ -440,6 +480,154 @@ class PlayerViewModel(
 
     fun createPlaylistAndAdd(name: String, mediaId: String) {
         createPlaylistAndAddAll(name, listOf(mediaId))
+    }
+
+    /** Adds several songs at once, one after another, keeping their order. */
+    fun addManyToPlaylist(playlistId: Long, mediaIds: List<String>) {
+        viewModelScope.launch {
+            val existing = library.getPlaylistMedia(playlistId).map { it.id }.toMutableList()
+            mediaIds.distinct().filter { it !in existing }.forEach { id ->
+                library.addToPlaylist(playlistId, id, existing.size)
+                existing += id
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------- backup
+
+    private fun trackJson(m: MediaItemModel) = org.json.JSONObject()
+        .put("title", m.title).put("artist", m.artist).put("album", m.album)
+        .put("durationMs", m.durationMs).put("folder", m.folder).put("format", m.format)
+        .put("kind", m.kind.name)
+
+    /** Everything worth moving to another phone, as text (JSON). */
+    suspend fun buildBackup(): String {
+        val lib = allLibraryItems.value.ifEmpty { library.observeMedia().first() }
+        val byId = lib.associateBy { it.id }
+        val root = org.json.JSONObject().put("app", "MHJ Player").put("version", 1).put("createdAt", System.currentTimeMillis())
+        val st = settings.value
+        root.put("settings", org.json.JSONObject()
+            .put("theme", st.theme.name).put("englishUi", st.englishUi).put("keepNaturalPitch", st.keepNaturalPitch)
+            .put("playbackSpeed", st.playbackSpeed.toDouble()).put("dialogueClarity", st.dialogueClarity)
+            .put("nightModeAudio", st.nightModeAudio).put("eqEnabled", st.eqEnabled).put("eqPreamp", st.eqPreamp.toDouble())
+            .put("eqPreset", st.eqPreset).put("showRemaining", st.showRemaining)
+            .put("eqGains", org.json.JSONArray().apply { st.eqGains.forEach { put(it.toDouble()) } }))
+        val lists = org.json.JSONArray()
+        val all = library.observePlaylists().first()
+        val order = playlists.value.map { it.id }
+        all.filter { !it.isSmart }.sortedBy { order.indexOf(it.id).let { i -> if (i < 0) Int.MAX_VALUE else i } }.forEach { pl ->
+            val items = org.json.JSONArray()
+            library.getPlaylistMedia(pl.id).forEach { items.put(trackJson(it)) }
+            lists.put(org.json.JSONObject().put("name", pl.name).put("favorites", pl.name.equals("Favorites", true)).put("items", items))
+        }
+        root.put("playlists", lists)
+        root.put("bookmarks", org.json.JSONArray().apply {
+            ListenMemory.bookmarks.value.forEach { b ->
+                val m = byId[b.mediaId] ?: return@forEach
+                put(org.json.JSONObject().put("track", trackJson(m)).put("positionMs", b.positionMs).put("createdAt", b.createdAt))
+            }
+        })
+        root.put("positions", org.json.JSONArray().apply {
+            ListenMemory.positions.value.forEach { (id, pos) ->
+                val m = byId[id] ?: return@forEach
+                put(org.json.JSONObject().put("track", trackJson(m)).put("positionMs", pos))
+            }
+        })
+        return root.toString(2)
+    }
+
+    /** Finds the same song on this phone: same name, then the closest length (and same folder). */
+    private fun matcher(lib: List<MediaItemModel>): (org.json.JSONObject) -> MediaItemModel? {
+        fun norm(s: String) = s.lowercase().filter { it.isLetterOrDigit() }
+        val byTitle = lib.groupBy { norm(it.title) }
+        return { t ->
+            val cands = byTitle[norm(t.optString("title"))].orEmpty()
+            val dur = t.optLong("durationMs")
+            val folder = t.optString("folder")
+            cands.minByOrNull { m ->
+                val d = if (dur > 0 && m.durationMs > 0) kotlin.math.abs(m.durationMs - dur) else 0L
+                d + (if (m.folder == folder) 0 else 1_500)
+            }?.takeIf { m -> dur <= 0 || m.durationMs <= 0 || kotlin.math.abs(m.durationMs - dur) < 5_000 }
+        }
+    }
+
+    /** Reads a backup made by [buildBackup]; returns a short report. */
+    suspend fun restoreBackup(text: String): String {
+        val root = runCatching { org.json.JSONObject(text) }.getOrNull()
+            ?: return L.t("این فایل پشتیبان MHJ Player نیست.")
+        if (root.optString("app") != "MHJ Player") return L.t("این فایل پشتیبان MHJ Player نیست.")
+        // Make sure the phone's songs are in the library first.
+        if (allLibraryItems.value.isEmpty()) runCatching { library.upsertMedia(scanner.scanMediaStore()) }
+        val lib = library.observeMedia().first()
+        val find = matcher(lib)
+        var found = 0
+        var missing = 0
+        val missingNames = mutableListOf<String>()
+        root.optJSONObject("settings")?.let { o ->
+            settingsStore.update { st ->
+                st.copy(
+                    theme = runCatching { AppTheme.valueOf(o.optString("theme")) }.getOrDefault(st.theme),
+                    englishUi = o.optBoolean("englishUi", st.englishUi),
+                    keepNaturalPitch = o.optBoolean("keepNaturalPitch", st.keepNaturalPitch),
+                    playbackSpeed = o.optDouble("playbackSpeed", st.playbackSpeed.toDouble()).toFloat(),
+                    dialogueClarity = o.optBoolean("dialogueClarity", st.dialogueClarity),
+                    nightModeAudio = o.optBoolean("nightModeAudio", st.nightModeAudio),
+                    eqEnabled = o.optBoolean("eqEnabled", st.eqEnabled),
+                    eqPreamp = o.optDouble("eqPreamp", st.eqPreamp.toDouble()).toFloat(),
+                    eqPreset = o.optString("eqPreset", st.eqPreset),
+                    showRemaining = o.optBoolean("showRemaining", st.showRemaining),
+                    eqGains = o.optJSONArray("eqGains")?.let { a -> (0 until a.length()).map { a.optDouble(it).toFloat() } }
+                        ?.takeIf { it.size == st.eqGains.size } ?: st.eqGains,
+                )
+            }
+        }
+        val existing = library.observePlaylists().first().filter { !it.isSmart }
+        val newOrder = mutableListOf<Long>()
+        val lists = root.optJSONArray("playlists") ?: org.json.JSONArray()
+        for (i in 0 until lists.length()) {
+            val o = lists.optJSONObject(i) ?: continue
+            val name = o.optString("name")
+            if (name.isBlank()) continue
+            val id = if (o.optBoolean("favorites")) library.ensureFavoritesPlaylistId()
+                else existing.firstOrNull { it.name == name }?.id ?: library.createPlaylist(name)
+            val arr = o.optJSONArray("items") ?: org.json.JSONArray()
+            val ids = mutableListOf<String>()
+            for (k in 0 until arr.length()) {
+                val t = arr.optJSONObject(k) ?: continue
+                val m = find(t)
+                if (m != null) { found++; if (m.id !in ids) ids += m.id }
+                else { missing++; if (missingNames.size < 8) missingNames += t.optString("title") }
+            }
+            // Same order as on the old phone; songs already in the list here stay after them.
+            val here = library.getPlaylistMedia(id).map { it.id }.filter { it !in ids }
+            library.replacePlaylistEntries(id, ids + here)
+            if (!o.optBoolean("favorites")) newOrder += id
+        }
+        if (newOrder.isNotEmpty()) {
+            val rest = playlists.value.filter { !it.isSmart && it.id !in newOrder }.map { it.id }
+            settingsStore.setPlaylistOrder(newOrder + rest)
+        }
+        root.optJSONArray("bookmarks")?.let { a ->
+            val list = (0 until a.length()).mapNotNull { k ->
+                val o = a.optJSONObject(k) ?: return@mapNotNull null
+                val m = find(o.optJSONObject("track") ?: return@mapNotNull null) ?: return@mapNotNull null
+                Bookmark(o.optLong("createdAt") + k, m.id, m.title, o.optLong("positionMs"), o.optLong("createdAt"))
+            }
+            ListenMemory.addBookmarks(list)
+        }
+        root.optJSONArray("positions")?.let { a ->
+            val map = (0 until a.length()).mapNotNull { k ->
+                val o = a.optJSONObject(k) ?: return@mapNotNull null
+                val m = find(o.optJSONObject("track") ?: return@mapNotNull null) ?: return@mapNotNull null
+                m.id to o.optLong("positionMs")
+            }.toMap()
+            if (map.isNotEmpty()) ListenMemory.setPositions(map)
+        }
+        val head = L.pick(
+            "${lists.length()} پلی‌لیست بازیابی شد. $found آهنگ پیدا شد" + (if (missing > 0) " و $missing آهنگ در این گوشی نبود" else "") + ".",
+            "${lists.length()} playlists restored. $found songs found" + (if (missing > 0) ", $missing not on this phone" else "") + ".",
+        )
+        return if (missingNames.isEmpty()) head else head + "\n" + L.pick("پیدا نشد: ", "Not found: ") + missingNames.joinToString("، ")
     }
 
     fun createPlaylistAndAddAll(name: String, mediaIds: List<String>) {

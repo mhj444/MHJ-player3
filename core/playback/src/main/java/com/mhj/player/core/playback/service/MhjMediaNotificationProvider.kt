@@ -72,7 +72,9 @@ class MhjMediaNotificationProvider(
             builder
                 .setSmallIcon(R.drawable.ic_stat_mhj_playback)
                 .setColor(DARK_SURFACE)
-                .setLargeIcon(largeIcon)
+            // Keep the song's own cover; when it has none, show the MHJ logo.
+            if (source.getLargeIcon() == null) builder.setLargeIcon(largeIcon)
+            builder
                 .setVisibility(Notification.VISIBILITY_PUBLIC)
                 .setCategory(Notification.CATEGORY_TRANSPORT)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -94,27 +96,9 @@ class MhjMediaNotificationProvider(
         notification.color = DARK_SURFACE
     }
 
-    private fun brandLargeIcon(): Bitmap {
-        val size = 192
-        val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bmp)
-        val bg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = DARK_SURFACE }
-        canvas.drawRoundRect(0f, 0f, size.toFloat(), size.toFloat(), 36f, 36f, bg)
-        val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = GOLD
-            style = Paint.Style.STROKE
-            strokeWidth = 6f
-        }
-        canvas.drawCircle(size / 2f, size / 2f, size * 0.32f, ring)
-        val glyph = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = GOLD
-            textAlign = Paint.Align.CENTER
-            textSize = 54f
-            isFakeBoldText = true
-        }
-        canvas.drawText("MHJ", size / 2f, size / 2f + 18f, glyph)
-        return bmp
-    }
+    private fun brandLargeIcon(): Bitmap =
+        runCatching { android.graphics.BitmapFactory.decodeResource(appContext.resources, R.drawable.notif_logo) }.getOrNull()
+            ?: Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888).also { it.eraseColor(DARK_SURFACE) }
 
     private fun ensureChannel(recreate: Boolean) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return

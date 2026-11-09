@@ -113,7 +113,7 @@ class PlaybackController(
         }
     }
 
-    fun play(items: List<MediaItemModel>, startIndex: Int = 0) {
+    fun play(items: List<MediaItemModel>, startIndex: Int = 0, startPositionMs: Long = 0L) {
         val c = controller ?: run {
             Log.e(TAG, "play() ignored — MediaController not connected")
             return
@@ -124,7 +124,7 @@ class PlaybackController(
         }
         val start = startIndex.coerceIn(0, items.lastIndex)
         Log.i(TAG, "play index=$start title=${items[start].title} uri=${items[start].uri}")
-        c.setMediaItems(items.map { it.toMediaItem() }, start, 0L)
+        c.setMediaItems(items.map { it.toMediaItem() }, start, startPositionMs.coerceAtLeast(0L))
         c.prepare()
         c.play()
     }
@@ -324,8 +324,12 @@ fun MediaItemModel.toMediaItem(): MediaItem {
     }
     val metadata = MediaMetadata.Builder()
         .setTitle(title)
-        .setArtist(artist)
-        .setAlbumTitle(album)
+        .setArtist(
+            artist.trim().let {
+                if (it.isEmpty() || it.equals("<unknown>", true) || it.equals("unknown artist", true)) L.t("خوانندهٔ نامشخص") else it
+            },
+        )
+        .setAlbumTitle(album.takeUnless { it.equals("<unknown>", true) })
         .setArtworkUri(artworkUri?.let { android.net.Uri.parse(it) })
         .setIsBrowsable(false)
         .setIsPlayable(true)

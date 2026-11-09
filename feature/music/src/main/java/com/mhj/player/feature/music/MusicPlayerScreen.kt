@@ -39,6 +39,10 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.material.icons.outlined.FastForward
+import androidx.compose.material.icons.outlined.FastRewind
 import androidx.compose.material.icons.outlined.Cast
 import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.FavoriteBorder
@@ -73,6 +77,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
@@ -121,13 +126,15 @@ fun MusicPlayerScreen(
     isFavorite: Boolean = false,
     onToggleFavorite: () -> Unit = {},
     speed: Float = 1f,
+    onSeekBy: (Long) -> Unit = {},
+    onBookmark: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     BoxWithConstraints(modifier.fillMaxSize()) {
         val landscape = maxWidth > maxHeight
         if (landscape) {
             Row(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Artwork(state, Modifier.fillMaxHeight(0.86f).aspectRatio(1f))
+                Artwork(state, Modifier.fillMaxHeight(0.86f).aspectRatio(1f), onSeekBy, onBookmark)
                 Spacer(Modifier.width(28.dp))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
                     Header(onOpenTopMenu, onCast, compact = true)
@@ -140,7 +147,7 @@ fun MusicPlayerScreen(
                 Header(onOpenTopMenu, onCast, compact = false)
                 BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     val side = minOf(maxWidth * 0.86f, maxHeight - 28.dp, 380.dp).coerceAtLeast(120.dp)
-                    Artwork(state, Modifier.size(side))
+                    Artwork(state, Modifier.size(side), onSeekBy, onBookmark)
                 }
                 Controls(state, onPlayPause, onSeek, onPrevious, onNext, onShuffle, onRepeat, showRemaining, onToggleRemaining, isFavorite, onToggleFavorite, onOpenBottomMenu, speed)
             }
@@ -173,7 +180,12 @@ private fun Header(onOpenTopMenu: () -> Unit, onCast: () -> Unit, compact: Boole
 
 /** Cover picture from the file itself, or a drawn gold disc when there is none. */
 @Composable
-private fun Artwork(state: PlayerUiState, modifier: Modifier) {
+private fun Artwork(state: PlayerUiState, modifier: Modifier, onSeekBy: (Long) -> Unit, onBookmark: () -> Unit) {
+    // Double tap: left half = 10 s back, right half = 10 s forward (like YouTube). Hold: bookmark.
+    var flash by remember { mutableStateOf<Pair<Boolean, Long>?>(null) }
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val seek by rememberUpdatedState(onSeekBy)
+    val mark by rememberUpdatedState(onBookmark)
     val ctx = LocalContext.current
     val uri = state.current?.uri
     val art by produceState<ImageBitmap?>(null, uri, state.current?.artworkUri) {
@@ -187,6 +199,19 @@ private fun Artwork(state: PlayerUiState, modifier: Modifier) {
             .clip(shape)
             .background(Emboss.face())
             .border(1.5.dp, Emboss.rim(0.7f), shape)
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onDoubleTap = { off ->
+                        val back = off.x < size.width / 2f
+                        seek(if (back) -10_000L else 10_000L)
+                        flash = back to System.nanoTime()
+                    },
+                    onLongPress = {
+                        haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                        mark()
+                    },
+                )
+            }
             .padding(10.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -196,6 +221,44 @@ private fun Artwork(state: PlayerUiState, modifier: Modifier) {
             Image(a, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().clip(inner))
         } else {
             DrawnCover(state.isPlaying, Modifier.fillMaxSize().clip(inner))
+        }
+        SkipFlash(flash, Modifier.fillMaxSize().clip(inner))
+    }
+}
+
+/** The "10" that lights up on the side you double-tapped, then fades. */
+@Composable
+private fun SkipFlash(flash: Pair<Boolean, Long>?, modifier: Modifier) {
+    val alpha = remember { androidx.compose.animation.core.Animatable(0f) }
+    LaunchedEffect(flash) {
+        if (flash == null) return@LaunchedEffect
+        alpha.snapTo(1f)
+        alpha.animateTo(0f, tween(700, delayMillis = 250))
+    }
+    val f = flash ?: return
+    if (alpha.value <= 0.01f) return
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+        Box(modifier, contentAlignment = if (f.first) Alignment.CenterStart else Alignment.CenterEnd) {
+            Box(
+                Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(0.5f)
+                    .background(
+                        Brush.horizontalGradient(
+                            if (f.first) listOf(Color.Black.copy(alpha = 0.55f * alpha.value), Color.Transparent)
+                            else listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f * alpha.value)),
+                        ),
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        if (f.first) Icons.Outlined.FastRewind else Icons.Outlined.FastForward, null,
+                        tint = MhjColors.GoldHi.copy(alpha = alpha.value), modifier = Modifier.size(36.dp),
+                    )
+                    Text(Fa.num(10) + L.pick(" ثانیه", " s"), color = MhjColors.GoldHi.copy(alpha = alpha.value), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
+            }
         }
     }
 }
@@ -390,37 +453,48 @@ private fun PlayButton(playing: Boolean, buffering: Boolean, onClick: () -> Unit
     }
 }
 
-/** Glowing gold waves that move while music plays and lie almost flat when paused. */
+/**
+ * Glowing gold waves that flow endlessly across the whole width and fade out at both sides,
+ * so they seem to come from beyond the screen. Every speed is a whole number of turns per loop,
+ * so the animation never jumps when it starts over.
+ */
 @Composable
 private fun Visualizer(active: Boolean, modifier: Modifier) {
     val t = rememberInfiniteTransition(label = "vis")
-    val phase by t.animateFloat(0f, (2 * PI).toFloat(), infiniteRepeatable(tween(3200, easing = LinearEasing), RepeatMode.Restart), label = "p")
-    val breath by t.animateFloat(0.7f, 1f, infiniteRepeatable(tween(1700, easing = LinearEasing), RepeatMode.Reverse), label = "b")
-    val level by androidx.compose.animation.core.animateFloatAsState(if (active) 1f else 0.12f, tween(600), label = "l")
-    Canvas(modifier) {
+    val phase by t.animateFloat(0f, (2 * PI).toFloat(), infiniteRepeatable(tween(6000, easing = LinearEasing), RepeatMode.Restart), label = "p")
+    val level by androidx.compose.animation.core.animateFloatAsState(if (active) 1f else 0.15f, tween(700), label = "l")
+    Canvas(modifier.graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }) {
         val w = size.width
         val h = size.height
         val mid = h / 2
-        data class Wave(val amp: Float, val speed: Float, val color: Color, val width: Float)
+        // (cycles across the width, turns per loop, amplitude, colour, line width)
+        data class Wave(val cycles: Float, val turns: Int, val amp: Float, val color: Color, val width: Float)
         val waves = listOf(
-            Wave(0.45f, 2.6f, MhjColors.Gold.copy(alpha = 0.35f), 1.2f),
-            Wave(0.7f, 1.7f, MhjColors.Gold.copy(alpha = 0.6f), 1.6f),
-            Wave(1f, 1f, MhjColors.GoldHi, 2.2f),
+            Wave(2.0f, -1, 0.55f, MhjColors.Gold.copy(alpha = 0.35f), 1.2f),
+            Wave(2.5f, 2, 0.75f, MhjColors.Gold.copy(alpha = 0.6f), 1.6f),
+            Wave(1.5f, 1, 1f, MhjColors.GoldHi, 2.2f),
         )
         waves.forEachIndexed { k, wv ->
             val path = androidx.compose.ui.graphics.Path()
-            var x = 0f
-            while (x <= w) {
+            // Size of the wave breathes slowly (also a whole number of turns per loop).
+            val swell = 0.8f + 0.2f * sin(phase * (k + 1) + k).toFloat()
+            var x = -6f
+            while (x <= w + 6f) {
                 val f = x / w
-                val s1 = sin(f * PI).toFloat()
-                val env = s1 * s1 * kotlin.math.sqrt(s1.coerceAtLeast(0f))
-                val y = mid + sin(f * PI * 5 + phase * wv.speed + k * 1.3f).toFloat() * h * 0.42f * wv.amp * env * level * (if (k == 2) breath else 1f)
-                if (x == 0f) path.moveTo(x, y) else path.lineTo(x, y)
+                val y = mid + sin(f * PI * 2 * wv.cycles - phase * wv.turns + k * 1.3f).toFloat() * h * 0.40f * wv.amp * swell * level
+                if (x <= -6f) path.moveTo(x, y) else path.lineTo(x, y)
                 x += 3f
             }
             drawPath(path, wv.color.copy(alpha = wv.color.alpha * 0.3f), style = Stroke(wv.width.dp.toPx() * 4f, cap = androidx.compose.ui.graphics.StrokeCap.Round))
             drawPath(path, wv.color, style = Stroke(wv.width.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round))
         }
+        // Fade both ends away softly.
+        drawRect(
+            Brush.horizontalGradient(
+                0f to Color.Transparent, 0.18f to Color.Black, 0.82f to Color.Black, 1f to Color.Transparent,
+            ),
+            blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
+        )
     }
 }
 
@@ -478,7 +552,7 @@ private fun SeekBar(positionMs: Long, durationMs: Long, onSeek: (Long) -> Unit, 
                     Offset(pad, cy - th / 2 + 0.5f), Size(x - pad, th - 1f), CornerRadius(th / 2),
                 )
                 val r = (if (drag != null) 12 else 9).dp.toPx()
-                drawCircle(Color.Black.copy(alpha = 0.45f), r * 1.05f, Offset(x + r * 0.15f, cy + r * 0.3f))
+                drawCircle(Color.Black.copy(alpha = if (c.isDark) 0.45f else 0.16f), r * 1.02f, Offset(x + r * 0.08f, cy + r * (if (c.isDark) 0.3f else 0.18f)))
                 drawCircle(Brush.radialGradient(listOf(MhjColors.GoldHi, MhjColors.Gold, MhjColors.GoldLo), Offset(x - r * 0.3f, cy - r * 0.35f), r * 1.6f), r, Offset(x, cy))
             }
             Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {

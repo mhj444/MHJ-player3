@@ -1,5 +1,7 @@
 package com.mhj.player.core.playback.service
 
+import com.mhj.player.core.data.memory.ListenMemory
+
 import android.app.PendingIntent
 import android.content.Intent
 import android.util.Log
@@ -49,6 +51,33 @@ class MhjPlaybackService : MediaSessionService() {
     private var sleepJob: Job? = null
     @Volatile private var sleepAtEnd = false
 
+    /** Last known length of each file, so a file can be remembered after it has been left. */
+    private val knownDurations = HashMap<String, Long>()
+
+    /** Long files (audiobooks…) continue where you stopped, even after other songs in between. */
+    private val resumeListener = object : Player.Listener {
+        override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
+            val p = player ?: return
+            if (mediaItem == null || reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) return
+            val at = ListenMemory.resumeAt(mediaItem.mediaId)
+            // Only when the file starts from the beginning (not when we were asked for a spot).
+            if (at > 0 && p.currentPosition < 3_000) p.seekTo(at)
+        }
+
+        override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
+            val old = oldPosition.mediaItem ?: return
+            if (old.mediaId == newPosition.mediaItem?.mediaId) return
+            ListenMemory.remember(old.mediaId, oldPosition.positionMs, knownDurations[old.mediaId] ?: 0L)
+        }
+    }
+
+    private fun rememberSpot(p: ExoPlayer) {
+        val id = p.currentMediaItem?.mediaId ?: return
+        val d = p.duration
+        if (d > 0) knownDurations[id] = d
+        ListenMemory.remember(id, p.currentPosition, d)
+    }
+
     private val persistListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             persistNow()
@@ -82,8 +111,10 @@ class MhjPlaybackService : MediaSessionService() {
                     .build(),
                 true,
             )
+            ListenMemory.init(this)
             exo.addListener(persistListener)
             exo.addListener(sleepEndListener)
+            exo.addListener(resumeListener)
 
             // Our own audio session from the start, so the sound effects attach once and stay.
             runCatching {
@@ -178,6 +209,7 @@ class MhjPlaybackService : MediaSessionService() {
         runCatching { persistNow() }
         persistJob?.cancel()
         player?.removeListener(persistListener)
+        player?.removeListener(resumeListener)
         mediaSession?.release()
         mediaSession = null
         player?.release()
@@ -211,6 +243,7 @@ class MhjPlaybackService : MediaSessionService() {
      */
     private fun persistNow() {
         val p = player ?: return
+        runCatching { rememberSpot(p) }
         if (!::persistence.isInitialized) return
         serviceScope.launch {
             val snapshot = runCatching { captureSnapshot(p) }.getOrElse { error ->

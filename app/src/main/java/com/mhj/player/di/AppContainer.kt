@@ -26,6 +26,10 @@ class AppContainer(context: Context) {
     val playbackController = PlaybackController(appContext, scope)
     val mediaScanner = MediaLibraryScanner(appContext)
 
+    init {
+        com.mhj.player.core.data.memory.ListenMemory.init(appContext)
+    }
+
     fun bootstrap() {
         scope.launch {
             runCatching { playbackController.connect() }

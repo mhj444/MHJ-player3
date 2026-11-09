@@ -44,7 +44,8 @@ fun BrandLogoHeader(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Image(
-            painter = painterResource(R.drawable.chrome_mid_logo),
+            // Light theme: a cleaned-up copy with a soft brown shadow (no dark fringe on cream).
+            painter = painterResource(if (colors.isDark) R.drawable.chrome_mid_logo else R.drawable.chrome_light_logo),
             contentDescription = "MHJ",
             modifier = Modifier
                 .height(if (colors.isDark) 44.dp else 48.dp)

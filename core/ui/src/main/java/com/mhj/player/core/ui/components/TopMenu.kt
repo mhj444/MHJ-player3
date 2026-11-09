@@ -41,6 +41,12 @@ import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.Upload
+import androidx.compose.material.icons.outlined.SettingsBackupRestore
+import androidx.compose.material.icons.outlined.MusicNote
+import androidx.compose.material.icons.outlined.Movie
+import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -78,7 +84,7 @@ import com.mhj.player.core.ui.theme.MhjColors
 import com.mhj.player.core.ui.theme.MhjTheme
 import dev.chrisbanes.haze.HazeState
 
-private enum class TopPage { ROOT, LIBRARY, PLAYLISTS, FAVORITES, THEME, LANGUAGE, PLAYLIST_DETAIL }
+private enum class TopPage { ROOT, LIBRARY, PLAYLISTS, FAVORITES, THEME, LANGUAGE, BACKUP, PLAYLIST_DETAIL }
 
 @Composable
 fun TopMenuDrawer(
@@ -119,6 +125,11 @@ fun TopMenuDrawer(
     onOpenFavorites: () -> Unit = {},
     onRenamePlaylist: (Long, String) -> Unit = { _, _ -> },
     onSetEnglish: (Boolean) -> Unit = {},
+    listenPositions: Map<String, Long> = emptyMap(),
+    onPlayFolder: (List<MediaItemModel>, MediaItemModel) -> Unit = { _, _ -> },
+    onBackupSave: () -> Unit = {},
+    onBackupRestore: () -> Unit = {},
+    backupStatus: String? = null,
     onDeletePlaylist: (Long) -> Unit = {},
     onReorderPlaylists: (List<Long>) -> Unit = {},
     backEnabled: Boolean = true,
@@ -146,7 +157,7 @@ fun TopMenuDrawer(
     MhjSheet(
         visible = visible,
         fromTop = true,
-        heightFraction = when (page) { TopPage.ROOT -> 0.70f; TopPage.THEME, TopPage.LANGUAGE -> 0.50f; else -> 0.92f },
+        heightFraction = when (page) { TopPage.ROOT -> 0.80f; TopPage.THEME, TopPage.LANGUAGE, TopPage.BACKUP -> 0.56f; else -> 0.92f },
         onDismiss = onDismiss,
         modifier = modifier,
         hazeState = hazeState,
@@ -165,6 +176,7 @@ fun TopMenuDrawer(
                     }) { Chevron() }
                     FeatureRow(Icons.Outlined.Palette, L.t("ظاهر"), if (settings.theme == AppTheme.MIDNIGHT_GOLD) L.t("شب طلایی") else L.t("سفید چینی"), onClick = { page = TopPage.THEME }) { Chevron() }
                     FeatureRow(Icons.Outlined.Translate, L.t("زبان منوها"), if (settings.englishUi) "English" else "فارسی", onClick = { page = TopPage.LANGUAGE }) { Chevron() }
+                    FeatureRow(Icons.Outlined.SettingsBackupRestore, L.t("پشتیبان‌گیری"), L.t("انتقال پلی‌لیست‌ها به گوشی دیگر"), onClick = { page = TopPage.BACKUP }) { Chevron() }
                 }
             }
             TopPage.LIBRARY -> LibraryPage(
@@ -191,6 +203,8 @@ fun TopMenuDrawer(
                 onShareSelected = onShareSelected,
                 onAddSelectedToPlaylist = onAddSelectedToPlaylist,
                 onDeleteSelectedAsk = onDeleteSelectedAsk,
+                positions = listenPositions,
+                onPlayFolder = onPlayFolder,
             )
             TopPage.PLAYLISTS -> PlaylistsPage(
                 playlists = playlists.filter {
@@ -222,6 +236,21 @@ fun TopMenuDrawer(
                 onShare = onSharePlaylistTrack,
                 onAddToPlaylistAsk = onAddPlaylistTrackToPlaylistAsk,
             )
+            TopPage.BACKUP -> {
+                SheetTitle(L.t("پشتیبان‌گیری"), L.t("پلی‌لیست‌ها با همان ترتیب، علاقه‌مندی‌ها، نشانک‌ها و تنظیم‌ها"), { page = TopPage.ROOT })
+                Spacer(Modifier.height(8.dp))
+                Column(Modifier.padding(horizontal = 4.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    FeatureRow(Icons.Outlined.Upload, L.t("ذخیرهٔ پشتیبان"), L.t("یک فایل می‌سازد؛ آن را در تلگرام یا درایو نگه دارید"), onClick = onBackupSave) { Chevron() }
+                    FeatureRow(Icons.Outlined.Download, L.t("بازیابی از فایل"), L.t("در گوشی جدید، فایل پشتیبان را انتخاب کنید"), onClick = onBackupRestore) { Chevron() }
+                    if (!backupStatus.isNullOrBlank()) {
+                        Text(backupStatus, color = MhjTheme.colors.onBackground, fontSize = 13.sp, lineHeight = 22.sp, modifier = Modifier.padding(6.dp))
+                    }
+                    Text(
+                        L.t("این فایل فقط فهرست است؛ خود آهنگ‌ها را جدا به گوشی جدید منتقل کنید."),
+                        color = MhjTheme.colors.muted, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 6.dp),
+                    )
+                }
+            }
             TopPage.LANGUAGE -> {
                 SheetTitle(L.t("زبان منوها"), "Menu language", { page = TopPage.ROOT })
                 Spacer(Modifier.height(8.dp))
@@ -273,7 +302,12 @@ private fun ColumnScope.LibraryPage(
     onShareSelected: () -> Unit,
     onAddSelectedToPlaylist: () -> Unit,
     onDeleteSelectedAsk: () -> Unit,
+    positions: Map<String, Long> = emptyMap(),
+    onPlayFolder: (List<MediaItemModel>, MediaItemModel) -> Unit = { _, i -> onPlayItem(i) },
 ) {
+    var folderMode by remember { mutableStateOf(false) }
+    var openFolder by remember { mutableStateOf<String?>(null) }
+    BackHandler(enabled = openFolder != null) { openFolder = null }
     SheetTitle(L.t("کتابخانه"), L.pick("${Fa.num(items.size)} مورد", "${items.size} items"), onBack)
     Spacer(Modifier.height(8.dp))
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -302,15 +336,20 @@ private fun ColumnScope.LibraryPage(
     )
     Spacer(Modifier.height(8.dp))
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        FilterChip(L.t("همه"), filter.kind == null) { onUpdateFilter { it.copy(kind = null) } }
-        FilterChip(L.t("موسیقی"), filter.kind == MediaKind.MUSIC) { onUpdateFilter { it.copy(kind = MediaKind.MUSIC) } }
-        FilterChip(L.t("ویدیو"), filter.kind == MediaKind.VIDEO) { onUpdateFilter { it.copy(kind = MediaKind.VIDEO) } }
+        FilterChip(L.t("همه"), filter.kind == null && !folderMode) { folderMode = false; onUpdateFilter { it.copy(kind = null) } }
+        FilterChip(L.t("موسیقی"), filter.kind == MediaKind.MUSIC && !folderMode) { folderMode = false; onUpdateFilter { it.copy(kind = MediaKind.MUSIC) } }
+        FilterChip(L.t("ویدیو"), filter.kind == MediaKind.VIDEO && !folderMode) { folderMode = false; onUpdateFilter { it.copy(kind = MediaKind.VIDEO) } }
+        FilterChip(L.t("پوشه‌ها"), folderMode) { folderMode = true; openFolder = null; onUpdateFilter { it.copy(kind = null) } }
         FilterChip(L.t("پخش‌شده"), filter.playedOnly == true) {
             onUpdateFilter { it.copy(playedOnly = if (it.playedOnly == true) null else true) }
         }
         FilterChip(L.t("پخش‌نشده"), filter.playedOnly == false) {
             onUpdateFilter { it.copy(playedOnly = if (it.playedOnly == false) null else false) }
         }
+    }
+    if (folderMode) {
+        FolderBrowser(items, openFolder, positions, onOpen = { openFolder = it }, onPlay = onPlayFolder)
+        return
     }
     Spacer(Modifier.height(6.dp))
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -739,6 +778,82 @@ private fun ColumnScope.PlaylistDetailPage(
 fun artistLabel(a: String?): String {
     val t = a?.trim().orEmpty()
     return if (t.isEmpty() || t.equals("<unknown>", true) || t.equals("unknown artist", true) || t.equals("unknown", true)) L.t("خوانندهٔ نامشخص") else t
+}
+
+/** "Track 2" before "Track 10". */
+private val naturalOrder = Comparator<String> { a, b ->
+    val ra = Regex("\\d+|\\D+").findAll(a.lowercase()).map { it.value }.toList()
+    val rb = Regex("\\d+|\\D+").findAll(b.lowercase()).map { it.value }.toList()
+    for (i in 0 until minOf(ra.size, rb.size)) {
+        val x = ra[i]; val y = rb[i]
+        val c = if (x[0].isDigit() && y[0].isDigit()) (x.toBigIntegerOrNull() ?: java.math.BigInteger.ZERO).compareTo(y.toBigIntegerOrNull() ?: java.math.BigInteger.ZERO) else x.compareTo(y)
+        if (c != 0) return@Comparator c
+    }
+    ra.size - rb.size
+}
+
+/** The phone's folders, then the files of one folder in name order. */
+@Composable
+private fun ColumnScope.FolderBrowser(
+    items: List<MediaItemModel>,
+    open: String?,
+    positions: Map<String, Long>,
+    onOpen: (String?) -> Unit,
+    onPlay: (List<MediaItemModel>, MediaItemModel) -> Unit,
+) {
+    val c = MhjTheme.colors
+    val folders = remember(items) {
+        items.groupBy { it.folder.ifBlank { "—" } }.toSortedMap(naturalOrder)
+    }
+    if (open == null) {
+        Text(L.t("همهٔ پوشه‌ها"), color = if (c.isDark) MhjColors.GoldHi else MhjColors.GoldLo, fontSize = 12.sp,
+            fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp))
+        LazyColumn(
+            Modifier.fillMaxWidth().weight(1f, fill = true),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp, 6.dp),
+        ) {
+            items(folders.keys.toList(), key = { it }) { name ->
+                val n = folders[name]?.size ?: 0
+                FeatureRow(Icons.Outlined.Folder, name, L.pick("${Fa.num(n)} فایل", "$n files"), Modifier.height(68.dp), onClick = { onOpen(name) }) { Chevron() }
+            }
+        }
+        return
+    }
+    val files = remember(folders, open) { folders[open].orEmpty().sortedWith(compareBy(naturalOrder) { it.title }) }
+    Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            L.t("همهٔ پوشه‌ها"), color = c.muted, fontSize = 12.sp,
+            modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { onOpen(null) }.padding(4.dp),
+        )
+        Text(" › ", color = c.muted, fontSize = 12.sp)
+        Text(open, color = if (c.isDark) MhjColors.GoldHi else MhjColors.GoldLo, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        if (files.isNotEmpty()) RaisedPill(L.t("پخش همهٔ پوشه")) { onPlay(files, files.first()) }
+    }
+    Spacer(Modifier.height(6.dp))
+    LazyColumn(
+        Modifier.fillMaxWidth().weight(1f, fill = true),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp, 6.dp),
+    ) {
+        items(files, key = { it.id }) { item ->
+            val saved = positions[item.id]
+            val extra = when {
+                saved == null -> ""
+                saved < 0 -> " · " + L.t("شنیده شده")
+                saved > 0 -> " · " + L.pick("ادامه از ${Fa.time(saved)}", "resume at ${Fa.time(saved)}")
+                else -> ""
+            }
+            FeatureRow(
+                if (item.kind == MediaKind.VIDEO) Icons.Outlined.Movie else Icons.Outlined.MusicNote,
+                item.title,
+                (if (item.durationMs > 0) Fa.time(item.durationMs) else artistLabel(item.artist)) + extra,
+                Modifier.height(68.dp),
+                onClick = { onPlay(files, item) },
+            )
+        }
+    }
 }
 
 @Composable
