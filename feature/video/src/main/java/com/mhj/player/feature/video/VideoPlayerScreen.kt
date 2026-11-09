@@ -37,14 +37,6 @@ import androidx.compose.material.icons.outlined.Replay10
 import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Forward10
-import androidx.compose.material.icons.outlined.Pause
-import androidx.compose.material.icons.outlined.PictureInPictureAlt
-import androidx.compose.material.icons.outlined.PlayArrow
-import androidx.compose.material.icons.outlined.Replay10
-import androidx.compose.material.icons.outlined.VideoLibrary
-import androidx.compose.material3.Icon
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
