@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -21,6 +22,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -107,13 +110,18 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
     val filter by viewModel.filter.collectAsStateWithLifecycle()
     val selectedIds by viewModel.selectedIds.collectAsStateWithLifecycle()
     val scanning by viewModel.scanning.collectAsStateWithLifecycle()
+    val context = LocalContext.current
 
-    // Music starts centered; swipe RIGHT (LTR) reveals video on the left page
     val pagerState = rememberPagerState(initialPage = PAGE_MUSIC, pageCount = { 2 })
     val scope = rememberCoroutineScope()
     var topOpen by remember { mutableStateOf(false) }
     var bottomOpen by remember { mutableStateOf(false) }
     val hazeState = remember { HazeState() }
+
+    // Detach video surface as soon as we leave the video page (prevents bleed into music)
+    val videoActive by remember {
+        derivedStateOf { pagerState.currentPage == PAGE_VIDEO }
+    }
 
     val safLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree(),
@@ -127,7 +135,13 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
         }
     }
 
-    // System back pops sheet/page instead of finishing the activity
+    // Re-bind AudioEffect session whenever ExoPlayer reports a new id
+    LaunchedEffect(playerState.audioSessionId) {
+        if (playerState.audioSessionId > 0) {
+            viewModel.rebindAudioEffects()
+        }
+    }
+
     BackHandler(enabled = topOpen || bottomOpen || pagerState.currentPage != PAGE_MUSIC) {
         when {
             bottomOpen -> bottomOpen = false
@@ -158,11 +172,13 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
                 state = pagerState,
                 modifier = Modifier.fillMaxSize(),
                 userScrollEnabled = !topOpen && !bottomOpen,
+                beyondViewportPageCount = 0,
             ) { page ->
                 when (page) {
                     PAGE_VIDEO -> VideoPlayerScreen(
                         state = playerState,
                         player = viewModel.playerOrNull(),
+                        active = videoActive,
                         onPlayPause = viewModel::togglePlayPause,
                         onSeek = viewModel::seekTo,
                         onSeekBy = viewModel::seekBy,
@@ -177,11 +193,7 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
                         onShuffle = viewModel::toggleShuffle,
                         onRepeat = viewModel::cycleRepeat,
                         onOpenTopMenu = { topOpen = true },
-                        onGoHome = {
-                            bottomOpen = false
-                            topOpen = false
-                            scope.launch { pagerState.animateScrollToPage(PAGE_MUSIC) }
-                        },
+                        onCast = { CastHelper.openCastChooser(context) },
                         onOpenBottomMenu = { bottomOpen = true },
                     )
                 }
@@ -221,12 +233,28 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
             BottomAudioDrawer(
                 visible = bottomOpen,
                 settings = settings,
+                abLabel = playerState.abLabel,
+                abActive = playerState.abLoopActive,
                 onDismiss = { bottomOpen = false },
                 onDialogueClarity = viewModel::setDialogueClarity,
                 onNightMode = viewModel::setNightMode,
                 onSpeedChange = viewModel::setPlaybackSpeed,
                 onSpeedNudge = viewModel::nudgeSpeed,
-                onEqClick = { /* DSP Phase 3 hook */ },
+                onAbClick = {
+                    val msg = viewModel.tapAbLoop()
+                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                },
+                onEqClick = {
+                    val intent = viewModel.openSystemEqualizer(context.packageName)
+                    if (intent != null) {
+                        runCatching { context.startActivity(intent) }
+                            .onFailure {
+                                Toast.makeText(context, "No system equalizer", Toast.LENGTH_SHORT).show()
+                            }
+                    } else {
+                        Toast.makeText(context, "Start playback for EQ", Toast.LENGTH_SHORT).show()
+                    }
+                },
                 onTimerChange = viewModel::setSleepTimerMinutes,
                 hazeState = hazeState,
             )

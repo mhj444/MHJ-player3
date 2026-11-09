@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -28,9 +29,7 @@ import com.mhj.player.core.ui.R
 import com.mhj.player.core.ui.theme.MhjTheme
 
 /**
- * Board logos as cropped metallic bitmaps:
- * - Midnight: sharp MHJ flame mark (no circular crest)
- * - Porcelain: headphones + MHJ metallic mark
+ * Pure transparent MHJ mark — no halo/matte behind the glyph.
  */
 @Composable
 fun BrandLogoHeader(
@@ -45,15 +44,15 @@ fun BrandLogoHeader(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Image(
-            painter = painterResource(
-                id = if (colors.isDark) R.drawable.chrome_mid_logo else R.drawable.chrome_porc_logo,
-            ),
+            painter = painterResource(R.drawable.chrome_mid_logo),
             contentDescription = "MHJ",
             modifier = Modifier
-                .height(if (colors.isDark) 52.dp else 58.dp)
-                .widthIn(max = if (colors.isDark) 200.dp else 168.dp)
-                .fillMaxWidth(if (colors.isDark) 0.56f else 0.44f),
+                .height(if (colors.isDark) 44.dp else 48.dp)
+                .widthIn(max = 220.dp)
+                .fillMaxWidth(0.52f),
             contentScale = ContentScale.Fit,
+            // Do not apply colorFilter / background — asset already has clean alpha
+            colorFilter = null,
         )
         if (showWordmark) {
             Row(
@@ -61,7 +60,6 @@ fun BrandLogoHeader(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.padding(top = 2.dp),
             ) {
-                // Hairlines are a porcelain signature; midnight board is mark + wordmark only
                 if (!colors.isDark) {
                     Hairline(Modifier.width(34.dp), colors.primary.copy(alpha = 0.55f))
                 }

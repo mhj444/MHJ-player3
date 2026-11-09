@@ -39,6 +39,10 @@ class PlaybackController(
     private var controller: MediaController? = null
     private var positionJob: Job? = null
 
+    /** A-B loop markers (ms). Both null = off; A set / B null = waiting for B. */
+    private var abPointAMs: Long? = null
+    private var abPointBMs: Long? = null
+
     private val listener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) {
             publish(player)
@@ -137,7 +141,50 @@ class PlaybackController(
         controller?.setPlaybackSpeed(speed.coerceIn(0.25f, 3.0f))
     }
 
+    /**
+     * A-B repeat: 1st tap marks A, 2nd marks B (loop), 3rd clears.
+     * Returns a short status string for UI feedback.
+     */
+    fun tapAbLoop(): String {
+        val c = controller ?: return "No player"
+        val pos = c.currentPosition.coerceAtLeast(0L)
+        val a = abPointAMs
+        val b = abPointBMs
+        return when {
+            a == null -> {
+                abPointAMs = pos
+                abPointBMs = null
+                publish(c)
+                "A @ ${formatMs(pos)}"
+            }
+            b == null -> {
+                if (pos <= a + 250L) {
+                    "Move forward for B"
+                } else {
+                    abPointBMs = pos
+                    publish(c)
+                    "A-B ${formatMs(a)}–${formatMs(pos)}"
+                }
+            }
+            else -> {
+                abPointAMs = null
+                abPointBMs = null
+                publish(c)
+                "A-B off"
+            }
+        }
+    }
+
+    fun clearAbLoop() {
+        abPointAMs = null
+        abPointBMs = null
+        controller?.let { publish(it) }
+    }
+
     fun playerOrNull(): Player? = controller
+
+    fun audioSessionId(): Int =
+        PlayerHolder.playerOrNull()?.audioSessionId?.takeIf { it > 0 } ?: 0
 
     fun release() {
         positionJob?.cancel()
@@ -151,8 +198,18 @@ class PlaybackController(
         positionJob?.cancel()
         positionJob = scope.launch {
             while (isActive) {
-                controller?.let { publish(it) }
-                delay(400)
+                controller?.let { c ->
+                    val a = abPointAMs
+                    val b = abPointBMs
+                    if (a != null && b != null && b > a) {
+                        val pos = c.currentPosition
+                        if (pos >= b) {
+                            c.seekTo(a)
+                        }
+                    }
+                    publish(c)
+                }
+                delay(200)
             }
         }
     }
@@ -204,8 +261,18 @@ class PlaybackController(
             },
             queue = queue,
             errorMessage = player.playerError?.message,
-            audioSessionId = (player as? androidx.media3.exoplayer.ExoPlayer)?.audioSessionId ?: 0,
+            // MediaController is not ExoPlayer — read live session from the service holder.
+            audioSessionId = PlayerHolder.playerOrNull()?.audioSessionId?.takeIf { it > 0 } ?: 0,
+            abPointAMs = abPointAMs,
+            abPointBMs = abPointBMs,
         )
+    }
+
+    private fun formatMs(ms: Long): String {
+        val totalSec = (ms / 1000L).toInt()
+        val m = totalSec / 60
+        val s = totalSec % 60
+        return "%d:%02d".format(m, s)
     }
 }
 

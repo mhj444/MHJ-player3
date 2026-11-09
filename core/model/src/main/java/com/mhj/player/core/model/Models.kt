@@ -66,7 +66,17 @@ data class PlayerUiState(
     val queue: List<MediaItemModel> = emptyList(),
     val errorMessage: String? = null,
     val audioSessionId: Int = 0,
-)
+    val abPointAMs: Long? = null,
+    val abPointBMs: Long? = null,
+) {
+    val abLoopActive: Boolean get() = abPointAMs != null && abPointBMs != null
+    val abLabel: String
+        get() = when {
+            abPointAMs != null && abPointBMs != null -> "A-B"
+            abPointAMs != null -> "A…"
+            else -> "A-B"
+        }
+}
 
 data class AppSettings(
     val theme: AppTheme = AppTheme.MIDNIGHT_GOLD,

@@ -137,6 +137,15 @@ class PlayerViewModel(
     fun toggleShuffle() = playback.setShuffle(!playerState.value.shuffle)
     fun cycleRepeat() = playback.cycleRepeat()
     fun playerOrNull() = playback.playerOrNull()
+    fun audioSessionId(): Int = playback.audioSessionId().takeIf { it > 0 }
+        ?: playerState.value.audioSessionId
+
+    fun tapAbLoop(): String = playback.tapAbLoop()
+
+    fun openSystemEqualizer(packageName: String): android.content.Intent? {
+        audioEffects.bindSession(audioSessionId())
+        return audioEffects.openSystemEqualizerIntent(packageName)
+    }
 
     fun toggleTheme() {
         viewModelScope.launch {
@@ -149,11 +158,28 @@ class PlayerViewModel(
     }
 
     fun setDialogueClarity(enabled: Boolean) {
-        viewModelScope.launch { settingsStore.setDialogueClarity(enabled) }
+        viewModelScope.launch {
+            audioEffects.bindSession(audioSessionId())
+            audioEffects.setDialogueClarity(enabled)
+            settingsStore.setDialogueClarity(enabled)
+        }
     }
 
     fun setNightMode(enabled: Boolean) {
-        viewModelScope.launch { settingsStore.setNightModeAudio(enabled) }
+        viewModelScope.launch {
+            audioEffects.bindSession(audioSessionId())
+            audioEffects.setNightMode(enabled)
+            settingsStore.setNightModeAudio(enabled)
+        }
+    }
+
+    /** Re-attach AudioEffect chain to the live ExoPlayer session without rewriting prefs. */
+    fun rebindAudioEffects() {
+        val session = audioSessionId()
+        if (session <= 0) return
+        audioEffects.bindSession(session)
+        audioEffects.setDialogueClarity(settings.value.dialogueClarity)
+        audioEffects.setNightMode(settings.value.nightModeAudio)
     }
 
     fun bumpSpeed() {

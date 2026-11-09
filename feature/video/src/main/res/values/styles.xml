@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- TextureView avoids SurfaceView punch-through when leaving the video page. -->
+    <style name="MhjPlayerView">
+        <item name="surface_type">texture_view</item>
+    </style>
+</resources>

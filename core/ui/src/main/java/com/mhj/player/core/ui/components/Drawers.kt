@@ -194,11 +194,14 @@ fun TopMenuDrawer(
 fun BottomAudioDrawer(
     visible: Boolean,
     settings: AppSettings,
+    abLabel: String = "A-B",
+    abActive: Boolean = false,
     onDismiss: () -> Unit,
     onDialogueClarity: (Boolean) -> Unit,
     onNightMode: (Boolean) -> Unit,
     onSpeedChange: (Float) -> Unit,
     onSpeedNudge: (Float) -> Unit,
+    onAbClick: () -> Unit = {},
     onEqClick: () -> Unit,
     onTimerChange: (Int) -> Unit,
     modifier: Modifier = Modifier,
@@ -273,9 +276,10 @@ fun BottomAudioDrawer(
                     OfficialGridTile(
                         Modifier.weight(1f),
                         if (dark) R.drawable.icon_mid_ab_loop else R.drawable.icon_porc_ab_loop,
-                        "A-B",
-                        "Loop",
-                    ) { }
+                        abLabel,
+                        if (abActive) "On" else "Loop",
+                        onAbClick,
+                    )
                     OfficialGridTile(
                         Modifier.weight(1f),
                         if (dark) R.drawable.icon_mid_speed else R.drawable.icon_porc_speed,

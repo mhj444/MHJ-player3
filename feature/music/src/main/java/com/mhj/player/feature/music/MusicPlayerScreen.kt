@@ -64,7 +64,7 @@ fun MusicPlayerScreen(
     onShuffle: () -> Unit,
     onRepeat: () -> Unit,
     onOpenTopMenu: () -> Unit,
-    onGoHome: () -> Unit,
+    onCast: () -> Unit = {},
     onOpenBottomMenu: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
@@ -98,7 +98,7 @@ fun MusicPlayerScreen(
                     onNext = onNext,
                     onShuffle = onShuffle,
                     onRepeat = onRepeat,
-                    onGoHome = onGoHome,
+                    onCast = onCast,
                 )
             } else {
                 PortraitMusicContent(
@@ -115,7 +115,7 @@ fun MusicPlayerScreen(
                     onNext = onNext,
                     onShuffle = onShuffle,
                     onRepeat = onRepeat,
-                    onGoHome = onGoHome,
+                    onCast = onCast,
                 )
             }
         }
@@ -137,7 +137,7 @@ private fun ColumnScope.PortraitMusicContent(
     onNext: () -> Unit,
     onShuffle: () -> Unit,
     onRepeat: () -> Unit,
-    onGoHome: () -> Unit,
+    onCast: () -> Unit,
 ) {
     val c = MhjTheme.colors
     Spacer(Modifier.height(4.dp))
@@ -154,7 +154,7 @@ private fun ColumnScope.PortraitMusicContent(
             )
             BrandLogoHeader(modifier = Modifier.weight(1f))
             HeaderOrb(
-                onClick = { },
+                onClick = onCast,
                 dark = dark,
                 iconRes = if (dark) R.drawable.icon_mid_cast else R.drawable.icon_porc_cast,
             )
@@ -273,11 +273,7 @@ private fun ColumnScope.PortraitMusicContent(
         }
 
         Spacer(Modifier.weight(1f))
-
-    BottomNav(
-        dark = dark,
-        onHome = onGoHome,
-    )
+        SheetPullHandle(dark = dark)
 }
 
 @Composable
@@ -295,7 +291,7 @@ private fun ColumnScope.LandscapeMusicContent(
     onNext: () -> Unit,
     onShuffle: () -> Unit,
     onRepeat: () -> Unit,
-    onGoHome: () -> Unit,
+    onCast: () -> Unit,
 ) {
     val c = MhjTheme.colors
     Row(
@@ -333,7 +329,7 @@ private fun ColumnScope.LandscapeMusicContent(
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 HeaderOrb(onClick = onOpenTopMenu, dark = dark, iconRes = if (dark) R.drawable.icon_mid_library else R.drawable.icon_porc_library)
                 BrandLogoHeader(modifier = Modifier.weight(1f), showWordmark = false)
-                HeaderOrb(onClick = {}, dark = dark, iconRes = if (dark) R.drawable.icon_mid_cast else R.drawable.icon_porc_cast)
+                HeaderOrb(onClick = onCast, dark = dark, iconRes = if (dark) R.drawable.icon_mid_cast else R.drawable.icon_porc_cast)
             }
             Text(title, color = if (dark) Color(0xFFF7F2E8) else c.onBackground, fontSize = 18.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(artist, color = MhjColors.Gold, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -350,7 +346,7 @@ private fun ColumnScope.LandscapeMusicContent(
                 PorcelainTransport(state, onPlayPause, onPrevious, onNext, onShuffle, onRepeat)
             }
             Spacer(Modifier.height(4.dp))
-            BottomNav(dark = dark, onHome = onGoHome)
+            SheetPullHandle(dark = dark)
         }
     }
 }
@@ -384,7 +380,7 @@ private fun HeaderOrb(onClick: () -> Unit, dark: Boolean, iconRes: Int) {
     }
 }
 
-/** Midnight transport: official glyphs; center = feedback gold-glass ring + pack play/pause. */
+/** Midnight transport: raised gold play + active shuffle/repeat feedback. */
 @Composable
 private fun MidnightTransport(
     state: PlayerUiState,
@@ -399,33 +395,36 @@ private fun MidnightTransport(
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        MidGlyph(R.drawable.icon_mid_shuffle, onShuffle, 42.dp)
+        MidGlyph(
+            res = R.drawable.icon_mid_shuffle,
+            onClick = onShuffle,
+            size = 42.dp,
+            active = state.shuffle,
+        )
         MidGlyph(R.drawable.icon_mid_prev, onPrevious, 46.dp)
-        // Board gold-glass center: soft halo + dual gold rim orb + official play/pause glyph
-        Box(
-            modifier = Modifier
-                .size(86.dp)
-                .softGoldHalo(43.dp, bloom = 18.dp, intensity = 0.5f),
-            contentAlignment = Alignment.Center,
-        ) {
-            EmbossCircle(onClick = onPlayPause, diameter = 78.dp, ringGold = true) {
-                Image(
-                    painter = painterResource(
-                        if (state.isPlaying) R.drawable.icon_mid_pause else R.drawable.icon_mid_play,
-                    ),
-                    contentDescription = "Play pause",
-                    modifier = Modifier.size(32.dp),
-                    contentScale = ContentScale.Fit,
-                )
-            }
-        }
+        RaisedGoldPlayButton(
+            isPlaying = state.isPlaying,
+            onClick = onPlayPause,
+            diameter = 78.dp,
+            iconRes = if (state.isPlaying) R.drawable.icon_mid_pause else R.drawable.icon_mid_play,
+        )
         MidGlyph(R.drawable.icon_mid_next, onNext, 46.dp)
-        MidGlyph(R.drawable.icon_mid_repeat, onRepeat, 42.dp)
+        MidGlyph(
+            res = R.drawable.icon_mid_repeat,
+            onClick = onRepeat,
+            size = 42.dp,
+            active = state.repeatMode != com.mhj.player.core.model.RepeatMode.OFF,
+        )
     }
 }
 
 @Composable
-private fun MidGlyph(res: Int, onClick: () -> Unit, size: Dp) {
+private fun MidGlyph(
+    res: Int,
+    onClick: () -> Unit,
+    size: Dp,
+    active: Boolean = true,
+) {
     Image(
         painter = painterResource(res),
         contentDescription = null,
@@ -433,10 +432,11 @@ private fun MidGlyph(res: Int, onClick: () -> Unit, size: Dp) {
             .size(size)
             .clickable(onClick = onClick),
         contentScale = ContentScale.Fit,
+        alpha = if (active) 1f else 0.45f,
     )
 }
 
-/** Porcelain: cream embossed orbs + official pack glyphs; center gold-glass ring. */
+/** Porcelain: cream embossed orbs + official pack glyphs; center raised gold. */
 @Composable
 private fun PorcelainTransport(
     state: PlayerUiState,
@@ -451,68 +451,105 @@ private fun PorcelainTransport(
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        PorcelainOrb(R.drawable.icon_porc_shuffle, onShuffle, 48.dp)
+        PorcelainOrb(R.drawable.icon_porc_shuffle, onShuffle, 48.dp, active = state.shuffle)
         PorcelainOrb(R.drawable.icon_porc_prev, onPrevious, 52.dp)
-        EmbossCircle(onClick = onPlayPause, diameter = 72.dp, ringGold = true) {
-            Image(
-                painter = painterResource(
-                    if (state.isPlaying) R.drawable.icon_porc_pause else R.drawable.icon_porc_play,
-                ),
-                contentDescription = "Play pause",
-                modifier = Modifier.size(30.dp),
-                contentScale = ContentScale.Fit,
-            )
-        }
+        RaisedGoldPlayButton(
+            isPlaying = state.isPlaying,
+            onClick = onPlayPause,
+            diameter = 72.dp,
+            iconRes = if (state.isPlaying) R.drawable.icon_porc_pause else R.drawable.icon_porc_play,
+        )
         PorcelainOrb(R.drawable.icon_porc_next, onNext, 52.dp)
-        PorcelainOrb(R.drawable.icon_porc_repeat, onRepeat, 48.dp)
+        PorcelainOrb(
+            R.drawable.icon_porc_repeat,
+            onRepeat,
+            48.dp,
+            active = state.repeatMode != com.mhj.player.core.model.RepeatMode.OFF,
+        )
     }
 }
 
 @Composable
-private fun PorcelainOrb(res: Int, onClick: () -> Unit, size: Dp) {
+private fun PorcelainOrb(res: Int, onClick: () -> Unit, size: Dp, active: Boolean = true) {
     EmbossCircle(onClick = onClick, diameter = size, ringGold = true) {
         Image(
             painter = painterResource(res),
             contentDescription = null,
             modifier = Modifier.size(size * 0.46f),
             contentScale = ContentScale.Fit,
+            alpha = if (active) 1f else 0.45f,
         )
     }
 }
 
-/** Bottom nav: Home only (Library lives on top-left). */
+/** Raised metallic gold play control — embossed depth, not a flat disc. */
 @Composable
-private fun BottomNav(dark: Boolean, onHome: () -> Unit) {
-    val c = MhjTheme.colors
-    Row(
+private fun RaisedGoldPlayButton(
+    isPlaying: Boolean,
+    onClick: () -> Unit,
+    diameter: Dp,
+    iconRes: Int,
+) {
+    Box(
+        modifier = Modifier
+            .size(diameter + 10.dp)
+            .softGoldHalo(diameter / 2 + 5.dp, bloom = 22.dp, intensity = 0.62f),
+        contentAlignment = Alignment.Center,
+    ) {
+        EmbossCircle(
+            onClick = onClick,
+            diameter = diameter,
+            filledGold = true,
+            ringGold = true,
+        ) {
+            // Inner bevel highlight for raised gold look
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(3.dp)
+                    .border(
+                        width = 1.2.dp,
+                        brush = Brush.verticalGradient(
+                            listOf(
+                                Color.White.copy(alpha = 0.55f),
+                                Color.Transparent,
+                                Color.Black.copy(alpha = 0.35f),
+                            ),
+                        ),
+                        shape = CircleShape,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Image(
+                    painter = painterResource(iconRes),
+                    contentDescription = if (isPlaying) "Pause" else "Play",
+                    modifier = Modifier.size(diameter * 0.40f),
+                    contentScale = ContentScale.Fit,
+                )
+            }
+        }
+    }
+}
+
+/** Tiny bottom handle hinting the audio sheet can be pulled up. */
+@Composable
+private fun SheetPullHandle(dark: Boolean) {
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = if (dark) 10.dp else 14.dp, top = 4.dp),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(bottom = if (dark) 12.dp else 14.dp, top = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
+        Box(
             modifier = Modifier
-                .clickable(onClick = onHome)
-                .padding(horizontal = 28.dp, vertical = 8.dp),
-        ) {
-            Image(
-                painter = painterResource(
-                    if (dark) R.drawable.icon_mid_home_active else R.drawable.icon_porc_home_active,
+                .width(42.dp)
+                .height(4.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(
+                    if (dark) MhjColors.Gold.copy(alpha = 0.55f)
+                    else MhjColors.GoldLo.copy(alpha = 0.55f),
                 ),
-                contentDescription = "Home",
-                modifier = Modifier.size(34.dp),
-                contentScale = ContentScale.Fit,
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                "Home",
-                color = if (dark) MhjColors.GoldHi else c.primary,
-                fontSize = 11.sp,
-                fontFamily = FontFamily.Serif,
-            )
-        }
+        )
     }
 }
 

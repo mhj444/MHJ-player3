@@ -1,10 +1,12 @@
 package com.mhj.player.feature.video
 
+import android.view.ContextThemeWrapper
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,7 +18,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.Image
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -49,6 +50,7 @@ import com.mhj.player.core.ui.theme.MhjTheme
 fun VideoPlayerScreen(
     state: PlayerUiState,
     player: Player?,
+    active: Boolean,
     onPlayPause: () -> Unit,
     onSeek: (Long) -> Unit,
     onSeekBy: (Long) -> Unit,
@@ -58,9 +60,8 @@ fun VideoPlayerScreen(
     val colors = MhjTheme.colors
     val context = LocalContext.current
     val playerView = remember {
-        PlayerView(context).apply {
+        PlayerView(ContextThemeWrapper(context, com.mhj.player.feature.video.R.style.MhjPlayerView)).apply {
             useController = false
-            // Fill landscape/portrait without letterbox clipping of controls
             resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -69,9 +70,12 @@ fun VideoPlayerScreen(
         }
     }
 
-    DisposableEffect(player) {
-        playerView.player = player
-        onDispose { playerView.player = null }
+    // Detach immediately when leaving video — prevents Surface/Texture bleed into music
+    DisposableEffect(player, active) {
+        playerView.player = if (active) player else null
+        onDispose {
+            playerView.player = null
+        }
     }
 
     Box(
@@ -79,9 +83,15 @@ fun VideoPlayerScreen(
             .fillMaxSize()
             .background(Color.Black),
     ) {
-        AndroidView(factory = { playerView }, modifier = Modifier.fillMaxSize())
+        if (active) {
+            AndroidView(
+                factory = { playerView },
+                update = { view -> view.player = player },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
 
-        if (player == null || state.current == null) {
+        if (!active || player == null || state.current == null) {
             Column(
                 modifier = Modifier.align(Alignment.Center).padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -96,135 +106,83 @@ fun VideoPlayerScreen(
             }
         }
 
-        // Landscape video chrome — frosted glass bar (board)
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .background(
-                    Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f))),
-                )
-                .padding(horizontal = 16.dp, vertical = 16.dp),
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
+        if (active) {
+            Column(
                 modifier = Modifier
+                    .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .softEmboss(26.dp, Color(0x55FFFFFF), Color(0x99000000), 14.dp)
-                    .clip(RoundedCornerShape(26.dp))
                     .background(
                         Brush.verticalGradient(
-                            listOf(Color(0xCC2A241C), Color(0xE614110E)),
+                            listOf(Color.Transparent, Color.Black.copy(alpha = 0.72f)),
                         ),
                     )
-                    .border(
-                        width = 1.1.dp,
-                        brush = Brush.linearGradient(
-                            listOf(
-                                MhjColors.GoldHi.copy(alpha = 0.4f),
-                                Color(0x33FFFFFF),
-                                MhjColors.GoldLo.copy(alpha = 0.3f),
-                            ),
-                        ),
-                        shape = RoundedCornerShape(26.dp),
-                    )
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
             ) {
-                GlassOrb(42.dp, onPlayPause) {
-                    Image(
-                        painter = painterResource(
-                            if (state.isPlaying) R.drawable.icon_mid_pause else R.drawable.icon_mid_play,
-                        ),
-                        contentDescription = "Play pause",
-                        modifier = Modifier.size(22.dp),
-                        contentScale = ContentScale.Fit,
-                    )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    TransportChip(onClick = onPlayPause) {
+                        Image(
+                            painter = painterResource(
+                                if (state.isPlaying) R.drawable.icon_mid_pause else R.drawable.icon_mid_play,
+                            ),
+                            contentDescription = "Play pause",
+                            modifier = Modifier.size(22.dp),
+                            contentScale = ContentScale.Fit,
+                        )
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    TransportChip(onClick = { onSeekBy(-10_000) }) {
+                        Image(
+                            painter = painterResource(R.drawable.icon_mid_prev),
+                            contentDescription = "Seek back",
+                            modifier = Modifier.size(20.dp),
+                            contentScale = ContentScale.Fit,
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    val duration = state.durationMs.coerceAtLeast(0L)
+                    val position = state.positionMs.coerceIn(0L, if (duration > 0) duration else Long.MAX_VALUE)
+                    Column(Modifier.weight(1f)) {
+                        Slider(
+                            value = if (duration > 0) position.toFloat() / duration else 0f,
+                            onValueChange = { frac -> if (duration > 0) onSeek((frac * duration).toLong()) },
+                            colors = SliderDefaults.colors(
+                                thumbColor = MhjColors.GoldHi,
+                                activeTrackColor = MhjColors.Gold,
+                                inactiveTrackColor = Color.White.copy(alpha = 0.25f),
+                            ),
+                        )
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(formatTime(position), color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp)
+                            Text(formatTime(duration), color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp)
+                        }
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    TransportChip(onClick = onOpenBottomMenu) {
+                        Image(
+                            painter = painterResource(R.drawable.icon_mid_equalizer),
+                            contentDescription = "Audio",
+                            modifier = Modifier.size(20.dp),
+                            contentScale = ContentScale.Fit,
+                        )
+                    }
                 }
-                Spacer(Modifier.width(6.dp))
-                GlassOrb(36.dp, { onSeekBy(-10_000) }) {
-                    Image(
-                        painter = painterResource(R.drawable.icon_mid_rewind_10),
-                        contentDescription = "Rewind 10",
-                        modifier = Modifier.size(18.dp),
-                        contentScale = ContentScale.Fit,
-                    )
-                }
-                Spacer(Modifier.width(4.dp))
-                GlassOrb(36.dp, { onSeekBy(10_000) }) {
-                    Image(
-                        painter = painterResource(R.drawable.icon_mid_forward_10),
-                        contentDescription = "Forward 10",
-                        modifier = Modifier.size(18.dp),
-                        contentScale = ContentScale.Fit,
-                    )
-                }
-
-                val duration = state.durationMs.coerceAtLeast(0L)
-                val position = state.positionMs.coerceAtLeast(0L)
-                Slider(
-                    value = if (duration > 0) position.toFloat() / duration else 0f,
-                    onValueChange = { if (duration > 0) onSeek((it * duration).toLong()) },
-                    modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
-                    colors = SliderDefaults.colors(
-                        thumbColor = MhjColors.GoldHi,
-                        activeTrackColor = MhjColors.GoldTrack,
-                        inactiveTrackColor = Color(0x44D4AF37),
-                    ),
-                )
-                Text(
-                    "${formatTime(position)} / ${formatTime(duration)}",
-                    color = MhjColors.GoldHi.copy(alpha = 0.9f),
-                    fontSize = 11.sp,
-                )
-                Spacer(Modifier.width(6.dp))
-                GlassOrb(34.dp, onOpenBottomMenu) {
-                    Image(
-                        painter = painterResource(R.drawable.icon_mid_cc),
-                        contentDescription = "Captions",
-                        modifier = Modifier.size(16.dp),
-                        contentScale = ContentScale.Fit,
-                    )
-                }
-                Spacer(Modifier.width(4.dp))
-                GlassOrb(34.dp, onOpenBottomMenu) {
-                    Image(
-                        painter = painterResource(R.drawable.icon_mid_speaker),
-                        contentDescription = "Audio",
-                        modifier = Modifier.size(16.dp),
-                        contentScale = ContentScale.Fit,
-                    )
-                }
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    "1.0x",
-                    color = MhjColors.Gold,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
-                        .clickable(onClick = onOpenBottomMenu)
-                        .padding(horizontal = 6.dp, vertical = 4.dp),
-                )
-                Spacer(Modifier.width(4.dp))
-                Image(
-                    painter = painterResource(R.drawable.icon_mid_fullscreen),
-                    contentDescription = "Fullscreen",
-                    modifier = Modifier.size(20.dp),
-                    contentScale = ContentScale.Fit,
-                )
             }
         }
     }
 }
 
 @Composable
-private fun GlassOrb(size: androidx.compose.ui.unit.Dp, onClick: () -> Unit, content: @Composable () -> Unit) {
+private fun TransportChip(onClick: () -> Unit, content: @Composable () -> Unit) {
     Box(
         modifier = Modifier
-            .size(size)
+            .size(42.dp)
+            .softEmboss(21.dp, Color.White.copy(alpha = 0.18f), Color.Black.copy(alpha = 0.55f), 8.dp)
             .clip(CircleShape)
-            .background(Brush.verticalGradient(listOf(Color(0xFF3A342C), Color(0xFF1A1612))))
-            .border(1.3.dp, MhjColors.GoldMetal, CircleShape)
+            .background(Color(0xCC1A1612))
+            .border(1.dp, Brush.linearGradient(listOf(MhjColors.GoldHi, MhjColors.GoldLo)), CircleShape)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) { content() }
@@ -232,6 +190,8 @@ private fun GlassOrb(size: androidx.compose.ui.unit.Dp, onClick: () -> Unit, con
 
 private fun formatTime(ms: Long): String {
     if (ms <= 0L) return "0:00"
-    val total = ms / 1000
-    return "%d:%02d".format(total / 60, total % 60)
+    val total = (ms / 1000L).toInt()
+    val m = total / 60
+    val s = total % 60
+    return "%d:%02d".format(m, s)
 }
