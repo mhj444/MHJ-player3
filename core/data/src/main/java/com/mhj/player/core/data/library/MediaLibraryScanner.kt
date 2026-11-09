@@ -151,6 +151,13 @@ class MediaLibraryScanner(private val context: Context) {
                     val uri = ContentUris.withAppendedId(collection, id)
                     val display = cursor.getString(nameIdx).orEmpty()
                     val mime = cursor.getString(mimeIdx).orEmpty()
+                    // Program files that Android mistakes for video (TypeScript ".ts" etc.) — not media.
+                    val ext = display.substringAfterLast('.', "").lowercase()
+                    val relPath = cursor.getString(pathIdx).orEmpty()
+                    val dur = cursor.getLong(durationIdx)
+                    if (relPath.contains("node_modules", ignoreCase = true) ||
+                        (dur <= 0L && ext in setOf("ts", "tsx", "mts", "cts", "js", "map"))
+                    ) continue
                     val format = MimeTypeMap.getSingleton()
                         .getExtensionFromMimeType(mime)
                         ?.uppercase()

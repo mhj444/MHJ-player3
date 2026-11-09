@@ -36,6 +36,25 @@ object MediaShareHelper {
         context.startActivity(Intent.createChooser(intent, "اشتراک‌گذاری"))
     }
 
+    /** Several songs / videos in one share window (instead of one window per file). */
+    fun shareMany(context: Context, items: List<MediaItemModel>) {
+        if (items.isEmpty()) return
+        if (items.size == 1) return share(context, items[0])
+        val uris = ArrayList(items.mapNotNull { resolveShareUri(context, it) })
+        if (uris.isEmpty()) return
+        val allVideo = items.all { it.kind == MediaKind.VIDEO }
+        val allMusic = items.all { it.kind != MediaKind.VIDEO }
+        val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+            type = when { allVideo -> "video/*"; allMusic -> "audio/*"; else -> "*/*" }
+            putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            val clip = android.content.ClipData.newUri(context.contentResolver, items[0].title, uris[0])
+            uris.drop(1).forEach { clip.addItem(android.content.ClipData.Item(it)) }
+            clipData = clip
+        }
+        context.startActivity(Intent.createChooser(intent, "اشتراک‌گذاری ${uris.size} فایل"))
+    }
+
     fun deleteFromDevice(context: Context, item: MediaItemModel): Boolean {
         val uri = Uri.parse(item.uri)
         return try {

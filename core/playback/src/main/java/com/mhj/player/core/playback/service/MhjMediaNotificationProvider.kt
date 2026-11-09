@@ -144,7 +144,7 @@ class MhjMediaNotificationProvider(
     companion object {
         const val CHANNEL_ID = "mhj_playback_gold_dark_v4"
         const val NOTIFICATION_ID = 0x4D484A
-        const val GOLD = 0xFFD4AF37.toInt()
+        const val GOLD = 0xFFC9A96A.toInt()
         const val DARK_SURFACE = 0xFF14110E.toInt()
     }
 }

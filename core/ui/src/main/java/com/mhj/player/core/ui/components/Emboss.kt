@@ -148,6 +148,7 @@ fun RaisedIconButton(
     active: Boolean = false,
     enabled: Boolean = true,
     onLongClick: (() -> Unit)? = null,
+    tint: Color? = null,
 ) {
     val src = remember { MutableInteractionSource() }
     val pressed by src.collectIsPressedAsState()
@@ -174,6 +175,7 @@ fun RaisedIconButton(
             icon, description,
             tint = when {
                 !enabled -> c.muted.copy(alpha = 0.5f)
+                tint != null -> tint
                 active || c.isDark -> MhjColors.GoldHi
                 else -> MhjColors.GoldLo
             },
@@ -310,7 +312,7 @@ fun DrawnBackground(modifier: Modifier = Modifier, content: @Composable BoxScope
                 else Brush.verticalGradient(listOf(Color(0xFFFBF7F1), Color(0xFFF2EBE1), Color(0xFFE9E0D3)))
             )
             .drawBehind {
-                val glow = if (dark) Color(0x22D4AF37) else Color(0x1FC9A227)
+                val glow = if (dark) Color(0x1FC9A96A) else Color(0x1ABE9C5C)
                 drawCircle(Brush.radialGradient(listOf(glow, Color.Transparent), center = Offset(size.width * 0.5f, size.height * 0.30f), radius = size.minDimension * 0.75f),
                     radius = size.minDimension * 0.75f, center = Offset(size.width * 0.5f, size.height * 0.30f))
                 if (dark) {
@@ -318,7 +320,7 @@ fun DrawnBackground(modifier: Modifier = Modifier, content: @Composable BoxScope
                     val specks = listOf(0.12f to 0.08f, 0.86f to 0.14f, 0.07f to 0.52f, 0.93f to 0.61f, 0.22f to 0.88f, 0.78f to 0.92f, 0.5f to 0.04f)
                     specks.forEachIndexed { i, (fx, fy) ->
                         val r = size.minDimension * (0.012f + (i % 3) * 0.006f)
-                        drawCircle(Brush.radialGradient(listOf(Color(0x40E8C547), Color.Transparent), center = Offset(size.width * fx, size.height * fy), radius = r * 3),
+                        drawCircle(Brush.radialGradient(listOf(Color(0x33D9BF86), Color.Transparent), center = Offset(size.width * fx, size.height * fy), radius = r * 3),
                             radius = r * 3, center = Offset(size.width * fx, size.height * fy))
                     }
                 }

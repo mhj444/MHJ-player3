@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -342,10 +343,14 @@ class PlayerViewModel(
             _scanning.value = true
             runCatching {
                 val scanned = scanner.scanMediaStore()
-                if (scanned.isNotEmpty()) {
-                    library.upsertMedia(scanned)
-                    library.refreshSmartPlaylists()
-                }
+                // Drop phone files that are gone (or are no longer counted as media).
+                val keep = scanned.map { it.id }.toSet()
+                val stale = allLibraryItems.value.map { it.id }
+                    .ifEmpty { library.observeMedia().first().map { it.id } }
+                    .filter { (it.startsWith("music_") || it.startsWith("video_")) && it !in keep }
+                if (stale.isNotEmpty() && scanned.isNotEmpty()) library.deleteMedia(stale)
+                if (scanned.isNotEmpty()) library.upsertMedia(scanned)
+                library.refreshSmartPlaylists()
             }
             _scanning.value = false
         }
@@ -428,6 +433,20 @@ class PlayerViewModel(
             library.addToPlaylist(playlistId, mediaId, existing.size)
         }
     }
+
+    /** Your own playlists for the "add to playlist" panel, with song counts; Favorites first. */
+    suspend fun pickerPlaylists(mediaIds: List<String>): List<com.mhj.player.core.ui.components.PickerPlaylist> =
+        playlists.value.filter { !it.isSmart }.map { pl ->
+            val songs = library.getPlaylistMedia(pl.id).map { it.id }.toSet()
+            val fav = pl.name.equals("Favorites", ignoreCase = true)
+            com.mhj.player.core.ui.components.PickerPlaylist(
+                id = pl.id,
+                name = if (fav) "علاقه‌مندی‌ها" else pl.name,
+                count = songs.size,
+                hasAll = mediaIds.isNotEmpty() && mediaIds.all { it in songs },
+                isFavorites = fav,
+            )
+        }.sortedByDescending { it.isFavorites }
 
     fun createPlaylistAndAdd(name: String, mediaId: String) {
         createPlaylistAndAddAll(name, listOf(mediaId))

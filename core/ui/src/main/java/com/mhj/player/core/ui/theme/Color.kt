@@ -5,12 +5,12 @@ import androidx.compose.ui.graphics.Color
 
 object MhjColors {
     // Metallic gold (boards)
-    val GoldHi = Color(0xFFF2E0A8)
-    val Gold = Color(0xFFD4AF37)
-    val GoldMid = Color(0xFFC9A227)
-    val GoldLo = Color(0xFF9A7420)
-    val GoldGlow = Color(0x66E8C547)
-    val GoldTrack = Color(0xFFE0B84A)
+    val GoldHi = Color(0xFFEFDFB4)
+    val Gold = Color(0xFFC9A96A)
+    val GoldMid = Color(0xFFBE9C5C)
+    val GoldLo = Color(0xFF8A6D35)
+    val GoldGlow = Color(0x66D9BF86)
+    val GoldTrack = Color(0xFFD2B57C)
 
     // Midnight
     val NightBg = Color(0xFF070707)
@@ -20,7 +20,7 @@ object MhjColors {
     val NightGlass = Color(0xCC161616)
     val NightText = Color(0xFFF5F5F5)
     val NightMuted = Color(0xFFB8A57A)
-    val NightLight = Color(0x33D4AF37)
+    val NightLight = Color(0x33C9A96A)
     val NightDark = Color(0x66000000)
 
     // Porcelain

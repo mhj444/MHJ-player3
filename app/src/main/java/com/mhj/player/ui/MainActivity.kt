@@ -58,6 +58,9 @@ import com.mhj.player.core.ui.components.BoardBackground
 import android.app.PictureInPictureParams
 import android.util.Rational
 import com.mhj.player.core.ui.components.AudioActions
+import com.mhj.player.core.ui.components.PickerPlaylist
+import com.mhj.player.core.ui.components.PlaylistPickerSheet
+import androidx.compose.runtime.produceState
 import com.mhj.player.core.ui.components.BottomAudioDrawer
 import com.mhj.player.core.ui.components.SavedTranscript
 import com.mhj.player.core.ui.components.TranscriptUi
@@ -433,7 +436,7 @@ private fun PlayerRoot(
                     onReorderPlaylist = viewModel::reorderPlaylist,
                     onSharePlaylistTrack = { item -> MediaShareHelper.share(context, item) },
                     onShareSelected = {
-                        viewModel.selectedMediaItems().forEach { MediaShareHelper.share(context, it) }
+                        MediaShareHelper.shareMany(context, viewModel.selectedMediaItems())
                     },
                     onAddSelectedToPlaylist = {
                         val items = viewModel.selectedMediaItems()
@@ -576,56 +579,35 @@ private fun PlayerRoot(
                 )
             }
 
-            addToPlaylistAsk?.let { items ->
-                val userPlaylists = playlists.filter { !it.isSmart }
-                AlertDialog(
-                    onDismissRequest = { addToPlaylistAsk = null },
-                    title = { Text("افزودن به پلی‌لیست") },
-                    text = {
-                        Column(Modifier.verticalScroll(rememberScrollState())) {
-                            userPlaylists.forEach { pl ->
-                                Text(
-                                    pl.name,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            items.forEach { viewModel.addMediaToPlaylist(pl.id, it.id) }
-                                            addToPlaylistAsk = null
-                                            viewModel.clearSelection()
-                                            Toast.makeText(context, "به «${pl.name}» اضافه شد", Toast.LENGTH_SHORT).show()
-                                        }
-                                        .padding(vertical = 10.dp),
-                                )
-                            }
-                            OutlinedTextField(
-                                value = newPlaylistName,
-                                onValueChange = { newPlaylistName = it },
-                                singleLine = true,
-                                label = { Text("پلی‌لیست جدید") },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 8.dp),
-                            )
-                        }
-                    },
-                    confirmButton = {
-                        TextButton(
-                            onClick = {
-                                val name = newPlaylistName.trim()
-                                if (name.isNotEmpty() && items.isNotEmpty()) {
-                                    viewModel.createPlaylistAndAddAll(name, items.map { it.id })
-                                    Toast.makeText(context, "پلی‌لیست ساخته شد", Toast.LENGTH_SHORT).show()
-                                }
-                                addToPlaylistAsk = null
-                                viewModel.clearSelection()
-                            },
-                        ) { Text("ایجاد") }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { addToPlaylistAsk = null }) { Text("بستن") }
-                    },
-                )
+            val pickItems = addToPlaylistAsk
+            val pickerData by produceState(emptyList<PickerPlaylist>(), pickItems, playlists) {
+                value = if (pickItems == null) emptyList() else viewModel.pickerPlaylists(pickItems.map { it.id })
             }
+            PlaylistPickerSheet(
+                visible = pickItems != null,
+                subtitle = when {
+                    pickItems == null -> ""
+                    pickItems.size == 1 -> "«${pickItems[0].title}» — یک پلی‌لیست را بزنید"
+                    else -> "${pickItems.size} آهنگ — یک پلی‌لیست را بزنید"
+                },
+                playlists = pickerData,
+                onPick = { pl ->
+                    val items = pickItems.orEmpty()
+                    items.forEach { viewModel.addMediaToPlaylist(pl.id, it.id) }
+                    addToPlaylistAsk = null
+                    viewModel.clearSelection()
+                    Toast.makeText(context, if (pl.hasAll) "از قبل در «${pl.name}» بود" else "به «${pl.name}» اضافه شد", Toast.LENGTH_SHORT).show()
+                },
+                onCreate = { name ->
+                    val items = pickItems.orEmpty()
+                    if (items.isNotEmpty()) viewModel.createPlaylistAndAddAll(name, items.map { it.id })
+                    addToPlaylistAsk = null
+                    viewModel.clearSelection()
+                    Toast.makeText(context, "پلی‌لیست «$name» ساخته شد", Toast.LENGTH_SHORT).show()
+                },
+                onDismiss = { addToPlaylistAsk = null },
+                hazeState = hazeState,
+            )
         }
     }
 }

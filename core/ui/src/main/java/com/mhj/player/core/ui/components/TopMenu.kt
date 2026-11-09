@@ -33,6 +33,8 @@ import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowLeft
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.DarkMode
+import androidx.compose.material.icons.outlined.DragIndicator
+import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material.icons.outlined.LightMode
@@ -358,7 +360,7 @@ private fun ColumnScope.LibraryPage(
                             overflow = TextOverflow.Ellipsis,
                         )
                         Text(
-                            listOf(item.artist, if (item.kind == MediaKind.VIDEO) "ویدیو" else "موسیقی", item.format).filter { it.isNotBlank() }.joinToString(" · "),
+                            listOf(artistLabel(item.artist), if (item.kind == MediaKind.VIDEO) "ویدیو" else "موسیقی", item.format).filter { it.isNotBlank() }.joinToString(" · "),
                             color = MhjTheme.colors.muted,
                             fontSize = 11.sp,
                             maxLines = 1,
@@ -367,13 +369,9 @@ private fun ColumnScope.LibraryPage(
                     }
                     if (!selectionMode) {
                         Box {
-                            Text(
-                                "⋮",
-                                color = MhjColors.GoldHi,
-                                fontSize = 22.sp,
-                                modifier = Modifier
-                                    .clickable { menuOpen = true }
-                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                            Icon(
+                                Icons.Outlined.MoreVert, "بیشتر", tint = MhjColors.Gold,
+                                modifier = Modifier.clip(CircleShape).clickable { menuOpen = true }.padding(8.dp).size(22.dp),
                             )
                             androidx.compose.material3.DropdownMenu(
                                 expanded = menuOpen,
@@ -508,177 +506,139 @@ private fun ColumnScope.PlaylistDetailPage(
     onAddToPlaylistAsk: (MediaItemModel) -> Unit,
 ) {
     val id = playlist?.id ?: return
-    val canReorder = playlist?.isSmart != true
-    var order by remember(playlist?.id) { mutableStateOf(tracks.map { it.id }) }
-    var draggingIndex by remember { mutableIntStateOf(-1) }
+    val canReorder = !playlist.isSmart
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    // The order on screen; follows the database except while a row is being dragged.
+    var order by remember(id) { mutableStateOf(tracks.map { it.id }) }
+    var draggingId by remember { mutableStateOf<String?>(null) }
     var dragOffsetY by remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(tracks.map { it.id }, draggingIndex) {
-        // Don't clobber mid-drag; only sync when membership changes
-        if (draggingIndex < 0 &&
-            (order.toSet() != tracks.map { it.id }.toSet() || order.size != tracks.size)
-        ) {
-            order = tracks.map { it.id }
-        }
+    LaunchedEffect(tracks.map { it.id }) {
+        if (draggingId == null) order = tracks.map { it.id }
     }
-    val orderedTracks = remember(order, tracks) {
-        val map = tracks.associateBy { it.id }
-        order.mapNotNull { map[it] }
-    }
-    val density = LocalDensity.current
-    val rowHeightPx = with(density) { 64.dp.toPx() }
+    val byId = remember(tracks) { tracks.associateBy { it.id } }
+    val orderedTracks = order.mapNotNull { byId[it] }
+    val rowStepPx = with(LocalDensity.current) { (68 + 10).dp.toPx() }
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
 
     SheetTitle(
         playlistTitle(playlist),
-        "${Fa.num(tracks.size)} مورد" + if (playlist?.isSmart == true) " · خودکار" else "",
+        "${Fa.num(tracks.size)} مورد" + if (playlist.isSmart) " · خودکار" else "",
         onBack,
     )
-    Spacer(Modifier.height(8.dp))
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+    Spacer(Modifier.height(4.dp))
+    Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
         RaisedPill("پخش همه") { onPlayAll(id) }
-        if (canReorder) {
-            Text("برای جابه‌جایی، ☰ را نگه دارید و بکشید", color = MhjTheme.colors.muted, fontSize = 11.sp)
+        if (canReorder && tracks.size > 1) {
+            Text("برای جابه‌جایی، روی آهنگ انگشت نگه دارید و بکشید", color = MhjTheme.colors.muted, fontSize = 11.sp)
         }
     }
-    Spacer(Modifier.height(8.dp))
+    Spacer(Modifier.height(6.dp))
     if (orderedTracks.isEmpty()) {
-        Text("این پلی‌لیست خالی است", color = MhjTheme.colors.muted, fontSize = 13.sp)
-    } else {
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f, fill = true),
-            userScrollEnabled = draggingIndex < 0,
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp, 6.dp),
-        ) {
-            itemsIndexed(orderedTracks, key = { _, t -> t.id }) { index, item ->
-                var menuOpen by remember { mutableStateOf(false) }
-                val dragging = draggingIndex == index
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .zIndex(if (dragging) 4f else 0f)
-                        .graphicsLayer {
-                            if (dragging) {
-                                translationY = dragOffsetY
-                                scaleX = 1.05f
-                                scaleY = 1.05f
-                                shadowElevation = 24f
-                                alpha = 0.97f
-                            }
+        Text("این پلی‌لیست خالی است", color = MhjTheme.colors.muted, fontSize = 13.sp, modifier = Modifier.padding(8.dp))
+        return
+    }
+    LazyColumn(
+        state = listState,
+        modifier = Modifier.fillMaxWidth().weight(1f, fill = true),
+        userScrollEnabled = draggingId == null,
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp, 6.dp),
+    ) {
+        items(orderedTracks, key = { it.id }) { item ->
+            var menuOpen by remember { mutableStateOf(false) }
+            val dragging = draggingId == item.id
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(68.dp)
+                    .zIndex(if (dragging) 4f else 0f)
+                    .graphicsLayer {
+                        if (dragging) {
+                            translationY = dragOffsetY
+                            scaleX = 1.04f
+                            scaleY = 1.04f
                         }
-                        .shadow(
-                            elevation = if (dragging) 12.dp else 0.dp,
-                            shape = RoundedCornerShape(14.dp),
-                            ambientColor = MhjColors.Gold.copy(alpha = 0.55f),
-                            spotColor = MhjColors.Gold.copy(alpha = 0.45f),
-                        )
-                        .raised(16.dp, if (dragging) 0.dp else 4.dp, Emboss.body, Emboss.light, Emboss.dark)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(Emboss.face())
-                        .border(
-                            width = if (dragging) 1.5.dp else 1.dp,
-                            brush = if (dragging) androidx.compose.ui.graphics.SolidColor(MhjColors.Gold) else Emboss.rim(0.3f),
-                            shape = RoundedCornerShape(16.dp),
-                        )
-                        .padding(horizontal = 10.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    if (canReorder) {
-                        // Dedicated drag handle — long-press here lifts the row (avoids clickable conflict)
-                        Text(
-                            "☰",
-                            color = MhjColors.GoldHi,
-                            fontSize = 20.sp,
-                            modifier = Modifier
-                                .pointerInput(order, index, rowHeightPx) {
-                                    detectDragGesturesAfterLongPress(
-                                        onDragStart = {
-                                            draggingIndex = index
-                                            dragOffsetY = 0f
-                                        },
-                                        onDragCancel = {
-                                            if (draggingIndex >= 0) onReorder(id, order)
-                                            draggingIndex = -1
-                                            dragOffsetY = 0f
-                                        },
-                                        onDragEnd = {
-                                            onReorder(id, order)
-                                            draggingIndex = -1
-                                            dragOffsetY = 0f
-                                        },
-                                        onDrag = { change, dragAmount ->
-                                            change.consume()
-                                            dragOffsetY += dragAmount.y
-                                            val from = draggingIndex
-                                            if (from < 0) return@detectDragGesturesAfterLongPress
-                                            val shift = when {
-                                                dragOffsetY > rowHeightPx * 0.5f -> 1
-                                                dragOffsetY < -rowHeightPx * 0.5f -> -1
-                                                else -> 0
-                                            }
-                                            if (shift != 0) {
-                                                val to = (from + shift).coerceIn(0, order.lastIndex)
-                                                if (to != from) {
-                                                    val mutable = order.toMutableList()
-                                                    val moved = mutable.removeAt(from)
-                                                    mutable.add(to, moved)
-                                                    order = mutable
-                                                    draggingIndex = to
-                                                    dragOffsetY -= shift * rowHeightPx
-                                                }
-                                            }
-                                        },
-                                    )
-                                }
-                                .padding(horizontal = 6.dp, vertical = 8.dp),
-                        )
-                        Spacer(Modifier.width(8.dp))
                     }
-                    Column(
-                        Modifier
-                            .weight(1f)
-                            .clickable(enabled = !dragging) { onPlayItem(item) },
-                    ) {
-                        Text(item.title, color = MhjTheme.colors.onBackground, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(item.artist, color = MhjTheme.colors.muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                    Box {
-                        Text(
-                            "⋮",
-                            color = MhjColors.GoldHi,
-                            fontSize = 22.sp,
-                            modifier = Modifier
-                                .clickable { menuOpen = true }
-                                .padding(horizontal = 8.dp, vertical = 4.dp),
-                        )
-                        androidx.compose.material3.DropdownMenu(
-                            expanded = menuOpen,
-                            onDismissRequest = { menuOpen = false },
-                        ) {
-                            androidx.compose.material3.DropdownMenuItem(
-                                text = { Text("افزودن به پلی‌لیست") },
-                                onClick = { menuOpen = false; onAddToPlaylistAsk(item) },
+                    .raised(16.dp, if (dragging) 10.dp else 4.dp, Emboss.body, Emboss.light, Emboss.dark)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Emboss.face())
+                    .border(
+                        width = if (dragging) 1.5.dp else 1.dp,
+                        brush = if (dragging) SolidColor(MhjColors.Gold) else Emboss.rim(0.3f),
+                        shape = RoundedCornerShape(16.dp),
+                    )
+                    // Keyed on the song only, so moving it to a new place does not cancel the drag.
+                    .then(
+                        if (!canReorder) Modifier else Modifier.pointerInput(item.id) {
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = {
+                                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                                    draggingId = item.id
+                                    dragOffsetY = 0f
+                                },
+                                onDrag = { change, amount ->
+                                    change.consume()
+                                    dragOffsetY += amount.y
+                                    val cur = order
+                                    val from = cur.indexOf(item.id)
+                                    if (from < 0) return@detectDragGesturesAfterLongPress
+                                    val to = when {
+                                        dragOffsetY > rowStepPx * 0.5f && from < cur.lastIndex -> from + 1
+                                        dragOffsetY < -rowStepPx * 0.5f && from > 0 -> from - 1
+                                        else -> from
+                                    }
+                                    if (to != from) {
+                                        order = cur.toMutableList().also { l -> l.add(to, l.removeAt(from)) }
+                                        dragOffsetY -= (to - from) * rowStepPx
+                                    }
+                                },
+                                onDragEnd = {
+                                    onReorder(id, order)
+                                    draggingId = null
+                                    dragOffsetY = 0f
+                                },
+                                onDragCancel = {
+                                    onReorder(id, order)
+                                    draggingId = null
+                                    dragOffsetY = 0f
+                                },
                             )
-                            if (canReorder || playlist?.name.equals("Favorites", true) == true) {
-                                androidx.compose.material3.DropdownMenuItem(
-                                    text = { Text("حذف از این پلی‌لیست") },
-                                    onClick = {
-                                        menuOpen = false
-                                        onRemove(id, item.id)
-                                    },
-                                )
-                            }
-                            androidx.compose.material3.DropdownMenuItem(
-                                text = { Text("اشتراک‌گذاری") },
-                                onClick = { menuOpen = false; onShare(item) },
-                            )
+                        },
+                    )
+                    .clickable(enabled = draggingId == null) { onPlayItem(item) }
+                    .padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (canReorder) {
+                    Icon(Icons.Outlined.DragIndicator, null, tint = MhjColors.Gold.copy(alpha = 0.7f), modifier = Modifier.size(22.dp))
+                    Spacer(Modifier.width(8.dp))
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(item.title, color = MhjTheme.colors.onBackground, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(artistLabel(item.artist), color = MhjTheme.colors.muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Box {
+                    Icon(
+                        Icons.Outlined.MoreVert, "بیشتر", tint = MhjColors.Gold,
+                        modifier = Modifier.clip(CircleShape).clickable { menuOpen = true }.padding(8.dp).size(22.dp),
+                    )
+                    androidx.compose.material3.DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        androidx.compose.material3.DropdownMenuItem(text = { Text("افزودن به پلی‌لیست") }, onClick = { menuOpen = false; onAddToPlaylistAsk(item) })
+                        if (canReorder) {
+                            androidx.compose.material3.DropdownMenuItem(text = { Text("حذف از این پلی‌لیست") }, onClick = { menuOpen = false; onRemove(id, item.id) })
                         }
+                        androidx.compose.material3.DropdownMenuItem(text = { Text("اشتراک‌گذاری") }, onClick = { menuOpen = false; onShare(item) })
                     }
                 }
             }
         }
     }
+}
+
+/** "<unknown>" and empty artists read as «خوانندهٔ نامشخص». */
+fun artistLabel(a: String?): String {
+    val t = a?.trim().orEmpty()
+    return if (t.isEmpty() || t.equals("<unknown>", true) || t.equals("unknown artist", true) || t.equals("unknown", true)) "خوانندهٔ نامشخص" else t
 }
 
 @Composable

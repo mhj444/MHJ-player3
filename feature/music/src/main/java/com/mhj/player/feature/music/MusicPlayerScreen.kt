@@ -88,6 +88,9 @@ import com.mhj.player.core.ui.components.BrandLogoHeader
 import com.mhj.player.core.ui.components.Emboss
 import com.mhj.player.core.ui.components.Fa
 import com.mhj.player.core.ui.components.RaisedIconButton
+import com.mhj.player.core.ui.components.artistLabel
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.draw.scale
 import com.mhj.player.core.ui.components.raised
 import com.mhj.player.core.ui.theme.MhjColors
 import com.mhj.player.core.ui.theme.MhjTheme
@@ -140,12 +143,26 @@ fun MusicPlayerScreen(
     }
 }
 
+/** The MHJ logo is the menu button: tap it (or swipe down from the top) to open the library. */
 @Composable
 private fun Header(onOpenTopMenu: () -> Unit, onCast: () -> Unit, compact: Boolean) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        RaisedIconButton(Icons.Outlined.LibraryMusic, "کتابخانه و منو", onOpenTopMenu, size = 48.dp, iconSize = 23.dp)
-        Box(Modifier.weight(1f)) { if (!compact) BrandLogoHeader() }
-        RaisedIconButton(Icons.Outlined.Cast, "پخش روی دستگاه دیگر", onCast, size = 48.dp, iconSize = 23.dp)
+    Column(
+        Modifier
+            .clip(RoundedCornerShape(18.dp))
+            .clickable(onClick = onOpenTopMenu)
+            .padding(horizontal = 18.dp, vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        if (compact) {
+            Text("MHJ Player", color = MhjColors.Gold, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        } else {
+            BrandLogoHeader(Modifier.width(220.dp))
+        }
+        Spacer(Modifier.height(5.dp))
+        Box(
+            Modifier.size(width = 28.dp, height = 4.dp).clip(RoundedCornerShape(2.dp))
+                .background(Brush.horizontalGradient(listOf(MhjColors.GoldLo, MhjColors.GoldHi, MhjColors.GoldLo))),
+        )
     }
 }
 
@@ -259,8 +276,8 @@ private fun ColumnScope.Controls(
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
             Text(
-                item?.let { listOf(it.artist, it.album).filter { s -> s.isNotBlank() && s != "Unknown artist" && s != "<unknown>" }.joinToString(" — ") }
-                    ?.ifBlank { "خوانندهٔ نامشخص" } ?: "از منوی بالا یک آهنگ انتخاب کنید",
+                item?.let { listOf(artistLabel(it.artist), it.album).filter { s -> s.isNotBlank() && s != "<unknown>" }.joinToString(" — ") }
+                    ?: "روی لوگو بزنید و یک آهنگ انتخاب کنید",
                 color = c.muted, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
         }
@@ -268,11 +285,12 @@ private fun ColumnScope.Controls(
         RaisedIconButton(
             if (isFavorite) Icons.Outlined.Favorite else Icons.Outlined.FavoriteBorder,
             if (isFavorite) "برداشتن از علاقه‌مندی‌ها" else "افزودن به علاقه‌مندی‌ها",
-            onToggleFavorite, size = 46.dp, iconSize = 22.dp, active = isFavorite, enabled = item != null,
+            onToggleFavorite, size = 46.dp, iconSize = 22.dp, enabled = item != null,
+            tint = if (isFavorite) Color(0xFFE0475B) else null,
         )
     }
     Spacer(Modifier.height(14.dp))
-    Visualizer(state.isPlaying, Modifier.fillMaxWidth().height(40.dp))
+    Visualizer(state.isPlaying, Modifier.fillMaxWidth().height(60.dp))
     Spacer(Modifier.height(8.dp))
     SeekBar(state.positionMs, state.durationMs, onSeek, showRemaining, onToggleRemaining)
     Spacer(Modifier.height(16.dp))
@@ -319,60 +337,77 @@ private fun ColumnScope.Controls(
     Spacer(Modifier.height(6.dp))
 }
 
-/** The big gold play button. */
+/** The big play button: black, with a gold sign and a soft gold glow around it. */
 @Composable
 private fun PlayButton(playing: Boolean, buffering: Boolean, onClick: () -> Unit) {
     val src = remember { MutableInteractionSource() }
-    val size: Dp = 80.dp
-    Box(
-        Modifier
-            .size(size)
-            .raised(size / 2, 12.dp, MhjColors.Gold, Emboss.light, Emboss.dark)
-            .clip(CircleShape)
-            .background(Brush.verticalGradient(listOf(MhjColors.GoldHi, MhjColors.Gold, MhjColors.GoldLo)))
-            .border(2.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.7f), MhjColors.GoldLo)), CircleShape)
-            .clickable(src, indication = null, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Box(Modifier.size(size - 14.dp).clip(CircleShape).border(1.dp, Color(0x55000000), CircleShape))
-        Icon(
-            if (playing) Icons.Outlined.Pause else Icons.Outlined.PlayArrow,
-            if (playing) "توقف" else "پخش",
-            tint = Color(0xFF1A1408),
-            modifier = Modifier.size(40.dp),
-        )
-        if (buffering) {
-            val t = rememberInfiniteTransition(label = "buf")
-            val a by t.animateFloat(0f, 360f, infiniteRepeatable(tween(1100, easing = LinearEasing)), label = "a")
-            Canvas(Modifier.size(size - 4.dp)) {
-                drawArc(Color(0xFF1A1408).copy(alpha = 0.6f), a, 80f, false, style = Stroke(3.dp.toPx()))
+    val pressed by src.collectIsPressedAsState()
+    val size: Dp = 82.dp
+    Box(Modifier.size(size + 26.dp), contentAlignment = Alignment.Center) {
+        Canvas(Modifier.fillMaxSize()) {
+            drawCircle(
+                Brush.radialGradient(listOf(MhjColors.Gold.copy(alpha = if (playing) 0.45f else 0.3f), MhjColors.Gold.copy(alpha = 0.08f), Color.Transparent)),
+                radius = this.size.minDimension / 2,
+            )
+        }
+        Box(
+            Modifier
+                .size(size)
+                .scale(if (pressed) 0.96f else 1f)
+                .raised(size / 2, if (pressed) 2.dp else 10.dp, Color(0xFF0E0E10), Emboss.light, Emboss.dark)
+                .clip(CircleShape)
+                .background(Brush.verticalGradient(listOf(Color(0xFF28282C), Color(0xFF0B0B0C), Color(0xFF050506))))
+                .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.10f), Color.Transparent)), CircleShape)
+                .clickable(src, indication = null, onClick = onClick),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                if (playing) Icons.Outlined.Pause else Icons.Outlined.PlayArrow,
+                if (playing) "توقف" else "پخش",
+                tint = MhjColors.GoldHi,
+                modifier = Modifier.size(42.dp),
+            )
+            if (buffering) {
+                val t = rememberInfiniteTransition(label = "buf")
+                val a by t.animateFloat(0f, 360f, infiniteRepeatable(tween(1100, easing = LinearEasing)), label = "a")
+                Canvas(Modifier.size(size - 6.dp)) {
+                    drawArc(MhjColors.Gold.copy(alpha = 0.8f), a, 80f, false, style = Stroke(2.5f.dp.toPx()))
+                }
             }
         }
     }
 }
 
-/** Soft moving gold bars (still when paused). */
+/** Glowing gold waves that move while music plays and lie almost flat when paused. */
 @Composable
 private fun Visualizer(active: Boolean, modifier: Modifier) {
     val t = rememberInfiniteTransition(label = "vis")
-    val phase by t.animateFloat(0f, (2 * PI).toFloat(), infiniteRepeatable(tween(2400, easing = LinearEasing), RepeatMode.Restart), label = "p")
-    val p = if (active) phase else 0f
+    val phase by t.animateFloat(0f, (2 * PI).toFloat(), infiniteRepeatable(tween(3200, easing = LinearEasing), RepeatMode.Restart), label = "p")
+    val breath by t.animateFloat(0.7f, 1f, infiniteRepeatable(tween(1700, easing = LinearEasing), RepeatMode.Reverse), label = "b")
+    val level by androidx.compose.animation.core.animateFloatAsState(if (active) 1f else 0.12f, tween(600), label = "l")
     Canvas(modifier) {
-        val n = 44
-        val gap = size.width / (n * 2.4f)
-        val w = gap * 1.4f
-        val total = n * (w + gap) - gap
-        val x0 = (size.width - total) / 2
-        for (i in 0 until n) {
-            val tt = i / (n - 1f)
-            val env = sin(tt * PI).toFloat().coerceAtLeast(0.15f)
-            val wave = if (active) 0.45f + 0.35f * sin(i * 0.6f + p * 2).toFloat() + 0.2f * sin(i * 1.7f - p * 3).toFloat() else 0.18f
-            val h = (size.height * env * wave.coerceIn(0.08f, 1f)).coerceAtLeast(3f)
-            val x = x0 + i * (w + gap)
-            drawRoundRect(
-                Brush.verticalGradient(listOf(MhjColors.GoldHi, MhjColors.Gold, MhjColors.GoldLo), size.height / 2 - h / 2, size.height / 2 + h / 2),
-                Offset(x, size.height / 2 - h / 2), Size(w, h), CornerRadius(w / 2),
-            )
+        val w = size.width
+        val h = size.height
+        val mid = h / 2
+        data class Wave(val amp: Float, val speed: Float, val color: Color, val width: Float)
+        val waves = listOf(
+            Wave(0.45f, 2.6f, MhjColors.Gold.copy(alpha = 0.35f), 1.2f),
+            Wave(0.7f, 1.7f, MhjColors.Gold.copy(alpha = 0.6f), 1.6f),
+            Wave(1f, 1f, MhjColors.GoldHi, 2.2f),
+        )
+        waves.forEachIndexed { k, wv ->
+            val path = androidx.compose.ui.graphics.Path()
+            var x = 0f
+            while (x <= w) {
+                val f = x / w
+                val s1 = sin(f * PI).toFloat()
+                val env = s1 * s1 * kotlin.math.sqrt(s1.coerceAtLeast(0f))
+                val y = mid + sin(f * PI * 5 + phase * wv.speed + k * 1.3f).toFloat() * h * 0.42f * wv.amp * env * level * (if (k == 2) breath else 1f)
+                if (x == 0f) path.moveTo(x, y) else path.lineTo(x, y)
+                x += 3f
+            }
+            drawPath(path, wv.color.copy(alpha = wv.color.alpha * 0.3f), style = Stroke(wv.width.dp.toPx() * 4f, cap = androidx.compose.ui.graphics.StrokeCap.Round))
+            drawPath(path, wv.color, style = Stroke(wv.width.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round))
         }
     }
 }
@@ -389,7 +424,8 @@ private fun SeekBar(positionMs: Long, durationMs: Long, onSeek: (Long) -> Unit, 
     val frac = drag ?: if (dur > 0) (positionMs.toFloat() / dur).coerceIn(0f, 1f) else 0f
     val seek by rememberUpdatedState(onSeek)
     val durNow by rememberUpdatedState(dur)
-    val track = if (c.isDark) Color(0xFF0A0A0B) else Color(0xFFE2D8CA)
+    // The part not yet played stays visible: a sunken grey groove.
+    val track = if (c.isDark) Color(0xFF2C2C31) else Color(0xFFD9CFC1)
     val shownPos = if (drag != null) (drag!! * dur).toLong() else positionMs.coerceIn(0L, if (dur > 0) dur else Long.MAX_VALUE)
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         Column(Modifier.fillMaxWidth()) {
@@ -422,7 +458,8 @@ private fun SeekBar(positionMs: Long, durationMs: Long, onSeek: (Long) -> Unit, 
                 val cy = size.height / 2
                 val w = size.width - 2 * pad
                 drawRoundRect(track, Offset(pad, cy - th / 2), Size(w, th), CornerRadius(th / 2))
-                drawRoundRect(Color.Black.copy(alpha = 0.25f), Offset(pad, cy - th / 2), Size(w, th), CornerRadius(th / 2), style = Stroke(1f))
+                drawRoundRect(Color.Black.copy(alpha = if (c.isDark) 0.7f else 0.18f), Offset(pad, cy - th / 2), Size(w, 2f), CornerRadius(1f))
+                drawRoundRect(Color.White.copy(alpha = if (c.isDark) 0.06f else 0.9f), Offset(pad, cy + th / 2), Size(w, 1.2f), CornerRadius(1f))
                 val x = pad + w * frac
                 if (frac > 0f) drawRoundRect(
                     Brush.horizontalGradient(listOf(MhjColors.GoldLo, MhjColors.Gold, MhjColors.GoldHi), pad, x.coerceAtLeast(pad + 1f)),
