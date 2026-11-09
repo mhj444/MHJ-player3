@@ -278,6 +278,36 @@ class PlayerViewModel(
         }
     }
 
+    /** Single-file SAF pick for music or video. */
+    fun importAndPlayUri(uri: Uri, kind: MediaKind, displayName: String? = null) {
+        viewModelScope.launch {
+            val name = displayName?.substringBeforeLast('.')?.ifBlank { null }
+                ?: uri.lastPathSegment?.substringAfterLast(':')?.substringBeforeLast('.')
+                ?: if (kind == MediaKind.VIDEO) "Video" else "Track"
+            val format = displayName?.substringAfterLast('.', "")?.uppercase().orEmpty()
+                .ifEmpty {
+                    uri.lastPathSegment?.substringAfterLast('.', "")?.uppercase().orEmpty()
+                }
+            val item = MediaItemModel(
+                id = "saf_file_${uri.toString().hashCode()}",
+                uri = uri.toString(),
+                title = name,
+                artist = "Local file",
+                album = "",
+                durationMs = 0L,
+                kind = kind,
+                folder = "Imported",
+                format = format,
+                dateAddedMs = System.currentTimeMillis(),
+            )
+            library.upsertMedia(item)
+            library.refreshSmartPlaylists()
+            playback.awaitConnected()
+            playback.play(listOf(item), 0)
+            library.recordPlay(item.id)
+        }
+    }
+
     fun createPlaylist(name: String) {
         viewModelScope.launch {
             val trimmed = name.trim().ifEmpty { return@launch }

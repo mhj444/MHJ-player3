@@ -10,6 +10,7 @@ import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 import com.mhj.player.core.model.MediaItemModel
+import com.mhj.player.core.model.MediaKind
 import com.mhj.player.core.model.PlayerUiState
 import com.mhj.player.core.model.RepeatMode
 import com.mhj.player.core.playback.service.MhjPlaybackService
@@ -226,6 +227,9 @@ class PlaybackController(
                 album = meta?.albumTitle?.toString().orEmpty(),
                 durationMs = player.duration.coerceAtLeast(0L),
                 artworkUri = meta?.artworkUri?.toString(),
+                kind = meta.kindOr(MediaKind.MUSIC),
+                folder = meta?.extras?.getString(MEDIA_FOLDER_EXTRA).orEmpty(),
+                format = meta?.extras?.getString(MEDIA_FORMAT_EXTRA).orEmpty(),
             )
         } else {
             null
@@ -243,6 +247,9 @@ class PlaybackController(
                         album = m.albumTitle?.toString().orEmpty(),
                         durationMs = 0L,
                         artworkUri = m.artworkUri?.toString(),
+                        kind = m.kindOr(MediaKind.MUSIC),
+                        folder = m.extras?.getString(MEDIA_FOLDER_EXTRA).orEmpty(),
+                        format = m.extras?.getString(MEDIA_FORMAT_EXTRA).orEmpty(),
                     ),
                 )
             }
@@ -277,6 +284,11 @@ class PlaybackController(
 }
 
 fun MediaItemModel.toMediaItem(): MediaItem {
+    val extras = android.os.Bundle().apply {
+        putString(MEDIA_KIND_EXTRA, kind.name)
+        putString(MEDIA_FOLDER_EXTRA, folder)
+        putString(MEDIA_FORMAT_EXTRA, format)
+    }
     val metadata = MediaMetadata.Builder()
         .setTitle(title)
         .setArtist(artist)
@@ -284,10 +296,20 @@ fun MediaItemModel.toMediaItem(): MediaItem {
         .setArtworkUri(artworkUri?.let { android.net.Uri.parse(it) })
         .setIsBrowsable(false)
         .setIsPlayable(true)
+        .setExtras(extras)
         .build()
     return MediaItem.Builder()
         .setMediaId(id)
         .setUri(uri)
         .setMediaMetadata(metadata)
         .build()
+}
+
+const val MEDIA_KIND_EXTRA = "mhj_media_kind"
+const val MEDIA_FOLDER_EXTRA = "mhj_media_folder"
+const val MEDIA_FORMAT_EXTRA = "mhj_media_format"
+
+private fun MediaMetadata?.kindOr(fallback: MediaKind): MediaKind {
+    val raw = this?.extras?.getString(MEDIA_KIND_EXTRA) ?: return fallback
+    return runCatching { MediaKind.valueOf(raw) }.getOrDefault(fallback)
 }

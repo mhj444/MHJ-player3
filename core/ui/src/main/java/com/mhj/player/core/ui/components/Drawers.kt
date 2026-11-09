@@ -102,6 +102,7 @@ fun TopMenuDrawer(
     onPlayItem: (MediaItemModel) -> Unit,
     onScanDevice: () -> Unit,
     onImportFolder: () -> Unit,
+    onAddMusic: () -> Unit = {},
     modifier: Modifier = Modifier,
     hazeState: HazeState? = null,
 ) {
@@ -155,6 +156,7 @@ fun TopMenuDrawer(
                 onPlayItem = onPlayItem,
                 onScanDevice = onScanDevice,
                 onImportFolder = onImportFolder,
+                onAddMusic = onAddMusic,
             )
             TopPage.PLAYLISTS -> PlaylistsPage(
                 playlists = playlists.filter { it.smartKind != "favorites" },
@@ -420,12 +422,14 @@ private fun LibraryPage(
     onPlayItem: (MediaItemModel) -> Unit,
     onScanDevice: () -> Unit,
     onImportFolder: () -> Unit,
+    onAddMusic: () -> Unit,
 ) {
     val context = LocalContext.current
     var renameText by remember { mutableStateOf("") }
     PageHeader("Library", "کتابخانه", onBack)
     Spacer(Modifier.height(8.dp))
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ActionChip("Add music", onClick = onAddMusic)
         ActionChip(if (scanning) "Scanning…" else "Scan device", enabled = !scanning, onClick = onScanDevice)
         ActionChip("Import folder", onClick = onImportFolder)
     }

@@ -402,7 +402,8 @@ private fun MidnightTransport(
             active = state.shuffle,
         )
         MidGlyph(R.drawable.icon_mid_prev, onPrevious, 46.dp)
-        RaisedGoldPlayButton(
+        // Same gold outline/glyph palette as before — emboss depth only, no solid gold fill
+        EmbossedOutlinePlay(
             isPlaying = state.isPlaying,
             onClick = onPlayPause,
             diameter = 78.dp,
@@ -453,7 +454,7 @@ private fun PorcelainTransport(
     ) {
         PorcelainOrb(R.drawable.icon_porc_shuffle, onShuffle, 48.dp, active = state.shuffle)
         PorcelainOrb(R.drawable.icon_porc_prev, onPrevious, 52.dp)
-        RaisedGoldPlayButton(
+        EmbossedOutlinePlay(
             isPlaying = state.isPlaying,
             onClick = onPlayPause,
             diameter = 72.dp,
@@ -482,9 +483,12 @@ private fun PorcelainOrb(res: Int, onClick: () -> Unit, size: Dp, active: Boolea
     }
 }
 
-/** Raised metallic gold play control — embossed depth, not a flat disc. */
+/**
+ * Previous palette restored: dark recessed disc + gold ring + gold glyph.
+ * Only adds soft emboss shadow/highlight depth — no solid gold fill.
+ */
 @Composable
-private fun RaisedGoldPlayButton(
+private fun EmbossedOutlinePlay(
     isPlaying: Boolean,
     onClick: () -> Unit,
     diameter: Dp,
@@ -492,41 +496,22 @@ private fun RaisedGoldPlayButton(
 ) {
     Box(
         modifier = Modifier
-            .size(diameter + 10.dp)
-            .softGoldHalo(diameter / 2 + 5.dp, bloom = 22.dp, intensity = 0.62f),
+            .size(diameter + 8.dp)
+            .softGoldHalo(diameter / 2 + 4.dp, bloom = 16.dp, intensity = 0.42f),
         contentAlignment = Alignment.Center,
     ) {
         EmbossCircle(
             onClick = onClick,
             diameter = diameter,
-            filledGold = true,
+            filledGold = false,
             ringGold = true,
         ) {
-            // Inner bevel highlight for raised gold look
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(3.dp)
-                    .border(
-                        width = 1.2.dp,
-                        brush = Brush.verticalGradient(
-                            listOf(
-                                Color.White.copy(alpha = 0.55f),
-                                Color.Transparent,
-                                Color.Black.copy(alpha = 0.35f),
-                            ),
-                        ),
-                        shape = CircleShape,
-                    ),
-                contentAlignment = Alignment.Center,
-            ) {
-                Image(
-                    painter = painterResource(iconRes),
-                    contentDescription = if (isPlaying) "Pause" else "Play",
-                    modifier = Modifier.size(diameter * 0.40f),
-                    contentScale = ContentScale.Fit,
-                )
-            }
+            Image(
+                painter = painterResource(iconRes),
+                contentDescription = if (isPlaying) "Pause" else "Play",
+                modifier = Modifier.size(diameter * 0.40f),
+                contentScale = ContentScale.Fit,
+            )
         }
     }
 }

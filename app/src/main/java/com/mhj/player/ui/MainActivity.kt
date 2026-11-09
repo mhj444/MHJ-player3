@@ -1,10 +1,12 @@
 package com.mhj.player.ui
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.OpenableColumns
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -28,6 +30,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
@@ -36,6 +39,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mhj.player.MhjApp
+import com.mhj.player.core.model.MediaKind
 import com.mhj.player.core.ui.components.BoardBackground
 import com.mhj.player.core.ui.components.BottomAudioDrawer
 import com.mhj.player.core.ui.components.TopMenuDrawer
@@ -45,6 +49,7 @@ import com.mhj.player.core.ui.theme.MhjTheme
 import com.mhj.player.feature.music.MusicPlayerScreen
 import com.mhj.player.feature.video.VideoPlayerScreen
 import dev.chrisbanes.haze.HazeState
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -117,16 +122,59 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
     var topOpen by remember { mutableStateOf(false) }
     var bottomOpen by remember { mutableStateOf(false) }
     val hazeState = remember { HazeState() }
-
-    // Detach video surface as soon as we leave the video page (prevents bleed into music)
+    val onMusicPage by remember {
+        derivedStateOf { pagerState.currentPage == PAGE_MUSIC }
+    }
     val videoActive by remember {
         derivedStateOf { pagerState.currentPage == PAGE_VIDEO }
     }
 
-    val safLauncher = rememberLauncherForActivityResult(
+    fun persistUri(uri: Uri) {
+        runCatching {
+            context.contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION,
+            )
+        }
+    }
+
+    fun displayName(uri: Uri): String? {
+        return runCatching {
+            context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                ?.use { c ->
+                    if (c.moveToFirst()) c.getString(0) else null
+                }
+        }.getOrNull()
+    }
+
+    val folderLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree(),
     ) { uri: Uri? ->
-        uri?.let { viewModel.importSafTree(it) }
+        uri?.let {
+            persistUri(it)
+            viewModel.importSafTree(it)
+        }
+    }
+
+    val addMusicLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri: Uri? ->
+        uri ?: return@rememberLauncherForActivityResult
+        persistUri(uri)
+        viewModel.importAndPlayUri(uri, MediaKind.MUSIC, displayName(uri))
+        topOpen = false
+        scope.launch { pagerState.animateScrollToPage(PAGE_MUSIC) }
+    }
+
+    val pickVideoLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri: Uri? ->
+        uri ?: return@rememberLauncherForActivityResult
+        persistUri(uri)
+        viewModel.importAndPlayUri(uri, MediaKind.VIDEO, displayName(uri))
+        bottomOpen = false
+        topOpen = false
+        scope.launch { pagerState.animateScrollToPage(PAGE_VIDEO) }
     }
 
     LaunchedEffect(allLibrary, playerState.queue.size, playerState.current) {
@@ -135,11 +183,22 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
         }
     }
 
-    // Re-bind AudioEffect session whenever ExoPlayer reports a new id
     LaunchedEffect(playerState.audioSessionId) {
         if (playerState.audioSessionId > 0) {
             viewModel.rebindAudioEffects()
         }
+    }
+
+    // Leaving music page always dismisses the music audio sheet
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.currentPage }
+            .distinctUntilChanged()
+            .collect { page ->
+                if (page != PAGE_MUSIC) {
+                    bottomOpen = false
+                    topOpen = false
+                }
+            }
     }
 
     BackHandler(enabled = topOpen || bottomOpen || pagerState.currentPage != PAGE_MUSIC) {
@@ -155,14 +214,20 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .playerEdgeSwipes(
-                onSwipeDownFromTop = {
-                    topOpen = true
-                    bottomOpen = false
-                },
-                onSwipeUpFromBottom = {
-                    bottomOpen = true
-                    topOpen = false
+            .then(
+                if (onMusicPage) {
+                    Modifier.playerEdgeSwipes(
+                        onSwipeDownFromTop = {
+                            topOpen = true
+                            bottomOpen = false
+                        },
+                        onSwipeUpFromBottom = {
+                            bottomOpen = true
+                            topOpen = false
+                        },
+                    )
+                } else {
+                    Modifier
                 },
             ),
     ) {
@@ -182,7 +247,9 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
                         onPlayPause = viewModel::togglePlayPause,
                         onSeek = viewModel::seekTo,
                         onSeekBy = viewModel::seekBy,
-                        onOpenBottomMenu = { bottomOpen = true },
+                        onPickVideo = {
+                            pickVideoLauncher.launch(arrayOf("video/*"))
+                        },
                     )
                     else -> MusicPlayerScreen(
                         state = playerState,
@@ -194,70 +261,76 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
                         onRepeat = viewModel::cycleRepeat,
                         onOpenTopMenu = { topOpen = true },
                         onCast = { CastHelper.openCastChooser(context) },
-                        onOpenBottomMenu = { bottomOpen = true },
+                        onOpenBottomMenu = {
+                            if (onMusicPage) bottomOpen = true
+                        },
                     )
                 }
             }
 
-            TopMenuDrawer(
-                visible = topOpen,
-                settings = settings,
-                playlists = playlists,
-                libraryItems = library,
-                filter = filter,
-                selectedIds = selectedIds,
-                scanning = scanning,
-                onDismiss = { topOpen = false },
-                onToggleTheme = viewModel::toggleTheme,
-                onCreatePlaylist = viewModel::createPlaylist,
-                onPlayPlaylist = { id ->
-                    viewModel.playPlaylist(id)
-                    topOpen = false
-                    scope.launch { pagerState.animateScrollToPage(PAGE_MUSIC) }
-                },
-                onUpdateFilter = viewModel::updateFilter,
-                onToggleSelect = viewModel::toggleSelect,
-                onClearSelection = viewModel::clearSelection,
-                onRenameSelected = viewModel::renameSelected,
-                onDeleteSelected = viewModel::deleteSelected,
-                onPlayItem = { item ->
-                    viewModel.playItem(item)
-                    topOpen = false
-                    val page = if (item.kind.name == "VIDEO") PAGE_VIDEO else PAGE_MUSIC
-                    scope.launch { pagerState.animateScrollToPage(page) }
-                },
-                onScanDevice = viewModel::scanDeviceLibrary,
-                onImportFolder = { safLauncher.launch(null) },
-                hazeState = hazeState,
-            )
-            BottomAudioDrawer(
-                visible = bottomOpen,
-                settings = settings,
-                abLabel = playerState.abLabel,
-                abActive = playerState.abLoopActive,
-                onDismiss = { bottomOpen = false },
-                onDialogueClarity = viewModel::setDialogueClarity,
-                onNightMode = viewModel::setNightMode,
-                onSpeedChange = viewModel::setPlaybackSpeed,
-                onSpeedNudge = viewModel::nudgeSpeed,
-                onAbClick = {
-                    val msg = viewModel.tapAbLoop()
-                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                },
-                onEqClick = {
-                    val intent = viewModel.openSystemEqualizer(context.packageName)
-                    if (intent != null) {
-                        runCatching { context.startActivity(intent) }
-                            .onFailure {
-                                Toast.makeText(context, "No system equalizer", Toast.LENGTH_SHORT).show()
-                            }
-                    } else {
-                        Toast.makeText(context, "Start playback for EQ", Toast.LENGTH_SHORT).show()
-                    }
-                },
-                onTimerChange = viewModel::setSleepTimerMinutes,
-                hazeState = hazeState,
-            )
+            // Music-only drawers — never shown over video
+            if (onMusicPage) {
+                TopMenuDrawer(
+                    visible = topOpen,
+                    settings = settings,
+                    playlists = playlists,
+                    libraryItems = library,
+                    filter = filter,
+                    selectedIds = selectedIds,
+                    scanning = scanning,
+                    onDismiss = { topOpen = false },
+                    onToggleTheme = viewModel::toggleTheme,
+                    onCreatePlaylist = viewModel::createPlaylist,
+                    onPlayPlaylist = { id ->
+                        viewModel.playPlaylist(id)
+                        topOpen = false
+                        scope.launch { pagerState.animateScrollToPage(PAGE_MUSIC) }
+                    },
+                    onUpdateFilter = viewModel::updateFilter,
+                    onToggleSelect = viewModel::toggleSelect,
+                    onClearSelection = viewModel::clearSelection,
+                    onRenameSelected = viewModel::renameSelected,
+                    onDeleteSelected = viewModel::deleteSelected,
+                    onPlayItem = { item ->
+                        viewModel.playItem(item)
+                        topOpen = false
+                        val dest = if (item.kind == MediaKind.VIDEO) PAGE_VIDEO else PAGE_MUSIC
+                        scope.launch { pagerState.animateScrollToPage(dest) }
+                    },
+                    onScanDevice = viewModel::scanDeviceLibrary,
+                    onImportFolder = { folderLauncher.launch(null) },
+                    onAddMusic = { addMusicLauncher.launch(arrayOf("audio/*")) },
+                    hazeState = hazeState,
+                )
+                BottomAudioDrawer(
+                    visible = bottomOpen,
+                    settings = settings,
+                    abLabel = playerState.abLabel,
+                    abActive = playerState.abLoopActive,
+                    onDismiss = { bottomOpen = false },
+                    onDialogueClarity = viewModel::setDialogueClarity,
+                    onNightMode = viewModel::setNightMode,
+                    onSpeedChange = viewModel::setPlaybackSpeed,
+                    onSpeedNudge = viewModel::nudgeSpeed,
+                    onAbClick = {
+                        val msg = viewModel.tapAbLoop()
+                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                    },
+                    onEqClick = {
+                        val intent = viewModel.openSystemEqualizer(context.packageName)
+                        if (intent != null) {
+                            runCatching { context.startActivity(intent) }
+                                .onFailure {
+                                    Toast.makeText(context, "No system equalizer", Toast.LENGTH_SHORT).show()
+                                }
+                        } else {
+                            Toast.makeText(context, "Start playback for EQ", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    onTimerChange = viewModel::setSleepTimerMinutes,
+                    hazeState = hazeState,
+                )
+            }
         }
     }
 }

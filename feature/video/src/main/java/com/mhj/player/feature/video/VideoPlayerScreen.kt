@@ -3,6 +3,7 @@ package com.mhj.player.feature.video
 import android.view.ContextThemeWrapper
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -18,7 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.Image
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
@@ -33,6 +34,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -40,6 +42,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.Player
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import com.mhj.player.core.model.MediaKind
 import com.mhj.player.core.model.PlayerUiState
 import com.mhj.player.core.ui.R
 import com.mhj.player.core.ui.components.softEmboss
@@ -54,7 +57,7 @@ fun VideoPlayerScreen(
     onPlayPause: () -> Unit,
     onSeek: (Long) -> Unit,
     onSeekBy: (Long) -> Unit,
-    onOpenBottomMenu: () -> Unit,
+    onPickVideo: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = MhjTheme.colors
@@ -62,7 +65,7 @@ fun VideoPlayerScreen(
     val playerView = remember {
         PlayerView(ContextThemeWrapper(context, com.mhj.player.feature.video.R.style.MhjPlayerView)).apply {
             useController = false
-            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -70,12 +73,11 @@ fun VideoPlayerScreen(
         }
     }
 
-    // Detach immediately when leaving video — prevents Surface/Texture bleed into music
-    DisposableEffect(player, active) {
-        playerView.player = if (active) player else null
-        onDispose {
-            playerView.player = null
-        }
+    val hasVideo = active && state.current?.kind == MediaKind.VIDEO
+
+    DisposableEffect(player, hasVideo) {
+        playerView.player = if (hasVideo) player else null
+        onDispose { playerView.player = null }
     }
 
     Box(
@@ -83,15 +85,46 @@ fun VideoPlayerScreen(
             .fillMaxSize()
             .background(Color.Black),
     ) {
-        if (active) {
+        if (hasVideo) {
             AndroidView(
                 factory = { playerView },
-                update = { view -> view.player = player },
+                update = { view ->
+                    view.player = if (hasVideo) player else null
+                    view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                },
                 modifier = Modifier.fillMaxSize(),
             )
         }
 
-        if (!active || player == null || state.current == null) {
+        // Top video chrome — pick file (no music sheet)
+        Row(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "Video",
+                color = MhjColors.GoldHi,
+                fontFamily = FontFamily.Serif,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 18.sp,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                VideoChip(onClick = onPickVideo) {
+                    Image(
+                        painter = painterResource(R.drawable.icon_mid_library),
+                        contentDescription = "Open video",
+                        modifier = Modifier.size(20.dp),
+                        contentScale = ContentScale.Fit,
+                    )
+                }
+            }
+        }
+
+        if (!hasVideo) {
             Column(
                 modifier = Modifier.align(Alignment.Center).padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -99,30 +132,49 @@ fun VideoPlayerScreen(
                 Text("Video space", color = colors.primary, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Swipe left to return to music.",
+                    "Pick a video file to play",
                     color = colors.muted,
                     fontSize = 14.sp,
+                )
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    "Open video",
+                    color = MhjColors.GoldHi,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .border(1.dp, MhjColors.Gold, RoundedCornerShape(16.dp))
+                        .clickable(onClick = onPickVideo)
+                        .padding(horizontal = 18.dp, vertical = 12.dp),
                 )
             }
         }
 
-        if (active) {
+        if (hasVideo) {
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .background(
                         Brush.verticalGradient(
-                            listOf(Color.Transparent, Color.Black.copy(alpha = 0.72f)),
+                            listOf(Color.Transparent, Color.Black.copy(alpha = 0.78f)),
                         ),
                     )
                     .padding(horizontal = 16.dp, vertical = 14.dp),
             ) {
+                Text(
+                    state.current?.title.orEmpty(),
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                )
+                Spacer(Modifier.height(8.dp))
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    TransportChip(onClick = onPlayPause) {
+                    VideoChip(onClick = onPlayPause) {
                         Image(
                             painter = painterResource(
                                 if (state.isPlaying) R.drawable.icon_mid_pause else R.drawable.icon_mid_play,
@@ -133,7 +185,7 @@ fun VideoPlayerScreen(
                         )
                     }
                     Spacer(Modifier.width(10.dp))
-                    TransportChip(onClick = { onSeekBy(-10_000) }) {
+                    VideoChip(onClick = { onSeekBy(-10_000) }) {
                         Image(
                             painter = painterResource(R.drawable.icon_mid_prev),
                             contentDescription = "Seek back",
@@ -154,16 +206,19 @@ fun VideoPlayerScreen(
                                 inactiveTrackColor = Color.White.copy(alpha = 0.25f),
                             ),
                         )
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
                             Text(formatTime(position), color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp)
                             Text(formatTime(duration), color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp)
                         }
                     }
                     Spacer(Modifier.width(10.dp))
-                    TransportChip(onClick = onOpenBottomMenu) {
+                    VideoChip(onClick = onPickVideo) {
                         Image(
-                            painter = painterResource(R.drawable.icon_mid_equalizer),
-                            contentDescription = "Audio",
+                            painter = painterResource(R.drawable.icon_mid_library),
+                            contentDescription = "Open video",
                             modifier = Modifier.size(20.dp),
                             contentScale = ContentScale.Fit,
                         )
@@ -175,7 +230,7 @@ fun VideoPlayerScreen(
 }
 
 @Composable
-private fun TransportChip(onClick: () -> Unit, content: @Composable () -> Unit) {
+private fun VideoChip(onClick: () -> Unit, content: @Composable () -> Unit) {
     Box(
         modifier = Modifier
             .size(42.dp)
@@ -191,7 +246,5 @@ private fun TransportChip(onClick: () -> Unit, content: @Composable () -> Unit) 
 private fun formatTime(ms: Long): String {
     if (ms <= 0L) return "0:00"
     val total = (ms / 1000L).toInt()
-    val m = total / 60
-    val s = total % 60
-    return "%d:%02d".format(m, s)
+    return "%d:%02d".format(total / 60, total % 60)
 }
