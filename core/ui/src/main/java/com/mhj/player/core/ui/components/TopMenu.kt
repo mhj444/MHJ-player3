@@ -30,6 +30,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.DriveFileMove
+import androidx.compose.material.icons.automirrored.outlined.PlaylistAdd
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.SelectAll
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.automirrored.outlined.QueueMusic
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Add
@@ -316,7 +323,10 @@ private fun ColumnScope.LibraryPage(
 ) {
     var folderMode by remember { mutableStateOf(false) }
     var openFolder by remember { mutableStateOf<String?>(null) }
-    BackHandler(enabled = openFolder != null) { openFolder = null }
+    BackHandler(enabled = openFolder != null || (folderMode && selectionMode)) {
+        if (selectionMode) onClearSelection() else openFolder = null
+    }
+    LaunchedEffect(openFolder, folderMode) { if (selectionMode) onClearSelection() }
     SheetTitle(L.t("کتابخانه"), L.pick("${Fa.num(items.size)} مورد", "${items.size} items"), onBack)
     Spacer(Modifier.height(8.dp))
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -359,6 +369,19 @@ private fun ColumnScope.LibraryPage(
     if (folderMode) {
         FolderBrowser(
             items, openFolder, positions, onOpen = { openFolder = it }, onPlay = onPlayFolder,
+            selectedIds = selectedIds, selectionMode = selectionMode,
+            onToggleSelect = onToggleSelect, onEnterSelection = onEnterSelection,
+            selectionBar = { files ->
+                SelectionBar(
+                    count = selectedIds.size,
+                    onShare = onShareSelected,
+                    onPlaylist = onAddSelectedToPlaylist,
+                    onMove = { onMoveAsk(files.filter { it.id in selectedIds }) },
+                    onDelete = onDeleteSelectedAsk,
+                    onAll = { files.filter { it.id !in selectedIds }.forEach { onToggleSelect(it.id) } },
+                    onClose = onClearSelection,
+                )
+            },
             fileMenu = { item, close ->
                 androidx.compose.material3.DropdownMenuItem(text = { Text(L.t("افزودن به پلی‌لیست")) }, onClick = { close(); onAddItemToPlaylistAsk(item) })
                 androidx.compose.material3.DropdownMenuItem(text = { Text(L.t("اشتراک‌گذاری")) }, onClick = { close(); onShareItem(item) })
@@ -486,37 +509,16 @@ private fun ColumnScope.LibraryPage(
             }
         }
         if (selectionMode) {
-            Row(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .padding(bottom = 4.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(MhjTheme.colors.elevated)
-                    .border(1.dp, Emboss.rim(0.5f), RoundedCornerShape(16.dp))
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    L.pick("اشتراک (${Fa.num(selectedIds.size)})", "Share (${selectedIds.size})"),
-                    color = MhjColors.GoldHi,
-                    fontSize = 13.sp,
-                    modifier = Modifier.clickable(onClick = onShareSelected),
-                )
-                Text(
-                    L.t("پلی‌لیست"),
-                    color = MhjColors.GoldHi,
-                    fontSize = 13.sp,
-                    modifier = Modifier.clickable(onClick = onAddSelectedToPlaylist),
-                )
-                Text(
-                    L.t("حذف"),
-                    color = Color(0xFFFF8A80),
-                    fontSize = 13.sp,
-                    modifier = Modifier.clickable(onClick = onDeleteSelectedAsk),
-                )
-            }
+            SelectionBar(
+                count = selectedIds.size,
+                modifier = Modifier.align(Alignment.BottomCenter),
+                onShare = onShareSelected,
+                onPlaylist = onAddSelectedToPlaylist,
+                onMove = { onMoveAsk(items.filter { it.id in selectedIds }) },
+                onDelete = onDeleteSelectedAsk,
+                onAll = { items.filter { it.id !in selectedIds }.forEach { onToggleSelect(it.id) } },
+                onClose = onClearSelection,
+            )
         }
     }
 }
@@ -803,6 +805,46 @@ fun artistLabel(a: String?): String {
     return if (t.isEmpty() || t.equals("<unknown>", true) || t.equals("unknown artist", true) || t.equals("unknown", true)) L.t("خوانندهٔ نامشخص") else t
 }
 
+/** Bar shown while several files are ticked: share, playlist, move, delete, all, close. */
+@Composable
+private fun SelectionBar(
+    count: Int,
+    onShare: () -> Unit,
+    onPlaylist: () -> Unit,
+    onMove: () -> Unit,
+    onDelete: () -> Unit,
+    onAll: () -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    RaisedCard(modifier.fillMaxWidth().padding(4.dp), radius = 20.dp, depth = 8.dp, padding = 8.dp, rimAlpha = 0.8f) {
+        Text(
+            L.pick("${Fa.num(count)} مورد انتخاب شده", "$count selected"),
+            color = MhjColors.Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(start = 6.dp, bottom = 4.dp),
+        )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+            SelAction(Icons.Outlined.Close, L.t("بستن"), onClose)
+            SelAction(Icons.Outlined.SelectAll, L.t("همه"), onAll)
+            SelAction(Icons.Outlined.Share, L.t("اشتراک"), onShare)
+            SelAction(Icons.AutoMirrored.Outlined.PlaylistAdd, L.t("پلی‌لیست"), onPlaylist)
+            SelAction(Icons.Outlined.DriveFileMove, L.t("انتقال"), onMove)
+            SelAction(Icons.Outlined.DeleteOutline, L.t("حذف"), onDelete, danger = true)
+        }
+    }
+}
+
+@Composable
+private fun SelAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit, danger: Boolean = false) {
+    Column(
+        Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick).padding(horizontal = 6.dp, vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(icon, label, tint = if (danger) Color(0xFFE57373) else MhjColors.Gold, modifier = Modifier.size(22.dp))
+        Text(label, color = if (danger) Color(0xFFE57373) else MhjTheme.colors.onBackground, fontSize = 10.sp, maxLines = 1)
+    }
+}
+
 /** "Track 2" before "Track 10". */
 private val naturalOrder = Comparator<String> { a, b ->
     val ra = Regex("\\d+|\\D+").findAll(a.lowercase()).map { it.value }.toList()
@@ -825,6 +867,11 @@ private fun ColumnScope.FolderBrowser(
     onPlay: (List<MediaItemModel>, MediaItemModel) -> Unit,
     fileMenu: @Composable (MediaItemModel, () -> Unit) -> Unit,
     folderMenu: @Composable (String, List<MediaItemModel>, () -> Unit) -> Unit,
+    selectedIds: Set<String> = emptySet(),
+    selectionMode: Boolean = false,
+    onToggleSelect: (String) -> Unit = {},
+    onEnterSelection: (String) -> Unit = {},
+    selectionBar: @Composable (List<MediaItemModel>) -> Unit = {},
 ) {
     val c = MhjTheme.colors
     val folders = remember(items) {
@@ -868,10 +915,11 @@ private fun ColumnScope.FolderBrowser(
         if (files.isNotEmpty()) RaisedPill(L.t("پخش همهٔ پوشه")) { onPlay(files, files.first()) }
     }
     Spacer(Modifier.height(6.dp))
+    Box(Modifier.fillMaxWidth().weight(1f, fill = true)) {
     LazyColumn(
-        Modifier.fillMaxWidth().weight(1f, fill = true),
+        Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(10.dp),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp, 6.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 4.dp, end = 4.dp, top = 6.dp, bottom = if (selectionMode) 84.dp else 6.dp),
     ) {
         items(files, key = { it.id }) { item ->
             val saved = positions[item.id]
@@ -881,25 +929,50 @@ private fun ColumnScope.FolderBrowser(
                 saved > 0 -> " · " + L.pick("ادامه از ${Fa.time(saved)}", "resume at ${Fa.time(saved)}")
                 else -> ""
             }
-            FeatureRow(
-                if (item.kind == MediaKind.VIDEO) Icons.Outlined.Movie else Icons.Outlined.MusicNote,
-                item.title,
-                (if (item.durationMs > 0) Fa.time(item.durationMs) else artistLabel(item.artist)) + extra,
-                Modifier.height(68.dp),
-                onClick = { onPlay(files, item) },
-            ) {
-                var menu by remember { mutableStateOf(false) }
-                Box {
-                    Icon(
-                        Icons.Outlined.MoreVert, L.t("بیشتر"), tint = MhjColors.Gold,
-                        modifier = Modifier.clip(CircleShape).clickable { menu = true }.padding(8.dp).size(22.dp),
+            val selected = item.id in selectedIds
+            // Tap: play (or tick, while choosing). Hold: start choosing several.
+            Box(
+                Modifier.pointerInput(selectionMode, item.id) {
+                    detectTapGestures(
+                        onLongPress = { if (!selectionMode) onEnterSelection(item.id) else onToggleSelect(item.id) },
+                        onTap = { if (selectionMode) onToggleSelect(item.id) else onPlay(files, item) },
                     )
-                    androidx.compose.material3.DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                        fileMenu(item) { menu = false }
+                },
+            ) {
+                FeatureRow(
+                    if (item.kind == MediaKind.VIDEO) Icons.Outlined.Movie else Icons.Outlined.MusicNote,
+                    item.title,
+                    (if (item.durationMs > 0) Fa.time(item.durationMs) else artistLabel(item.artist)) + extra,
+                    Modifier.height(68.dp).then(
+                        if (selected) Modifier.border(1.5.dp, MhjColors.Gold, RoundedCornerShape(20.dp)) else Modifier,
+                    ),
+                ) {
+                    if (selectionMode) {
+                        Box(
+                            Modifier.padding(8.dp).size(24.dp).clip(CircleShape)
+                                .background(if (selected) MhjColors.Gold else Color.Transparent)
+                                .border(1.5.dp, MhjColors.Gold, CircleShape),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            if (selected) Icon(Icons.Outlined.Check, null, tint = Color(0xFF111111), modifier = Modifier.size(16.dp))
+                        }
+                    } else {
+                        var menu by remember { mutableStateOf(false) }
+                        Box {
+                            Icon(
+                                Icons.Outlined.MoreVert, L.t("بیشتر"), tint = MhjColors.Gold,
+                                modifier = Modifier.clip(CircleShape).clickable { menu = true }.padding(8.dp).size(22.dp),
+                            )
+                            androidx.compose.material3.DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                                fileMenu(item) { menu = false }
+                            }
+                        }
                     }
                 }
             }
         }
+    }
+    if (selectionMode) Box(Modifier.align(Alignment.BottomCenter)) { selectionBar(files) }
     }
 }
 

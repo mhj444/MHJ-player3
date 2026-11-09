@@ -715,6 +715,7 @@ private fun PlayerRoot(
             moveAsk?.let { items ->
                 MoveDialog(items.size, onDismiss = { moveAsk = null }) { folder ->
                     moveAsk = null
+                    viewModel.clearSelection()
                     moveFiles(items) { folder }
                 }
             }

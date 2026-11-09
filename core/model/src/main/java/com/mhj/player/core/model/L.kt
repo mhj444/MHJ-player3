@@ -94,6 +94,7 @@ object L {
         "پوشهٔ تازه در Music" to "New folder in Music", "ساختن و انتقال" to "Create and move",
         "زیرنویس" to "Subtitles", "زیرنویس از فایل…" to "Subtitle from file…", "بدون زیرنویس" to "No subtitles",
         "زیرنویس اضافه شد" to "Subtitles added", "این فایل زیرنویس خوانده نشد" to "Couldn't read this subtitle file",
+        "بستن" to "Close", "اشتراک" to "Share", "انتقال" to "Move",
         // A-B messages
         "اول یک آهنگ پخش کنید" to "Play something first", "نقطهٔ B باید بعد از A باشد" to "Point B must be after A",
         "تکرار A-B خاموش شد" to "A-B repeat off",
