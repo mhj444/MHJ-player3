@@ -3,8 +3,6 @@ package com.mhj.player.core.playback.transcript
 import android.content.Context
 import android.net.Uri
 import android.util.Log
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -13,7 +11,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import org.vosk.Model
 import org.vosk.Recognizer
@@ -31,6 +28,7 @@ data class TranscriptionUiState(
 
 /**
  * On-device ASR of the currently playing media file (not the microphone) via Vosk.
+ * Streams a capped PCM window so long audiobooks cannot hang on «آماده‌سازی صدا».
  */
 class TranscriptionController(
     context: Context,
@@ -51,9 +49,7 @@ class TranscriptionController(
             stop()
             return
         }
-        if (_state.value.isRunning) {
-            stop()
-        }
+        if (_state.value.isRunning) stop()
         start(mediaId, title, uri)
     }
 
@@ -62,6 +58,7 @@ class TranscriptionController(
         job?.cancel()
         job = scope.launch(Dispatchers.IO) {
             try {
+                if (uri.isBlank()) error("آدرس فایل خالی است")
                 _state.value = TranscriptionUiState(
                     isRunning = true,
                     isDownloading = !models.isModelReady(),
@@ -79,6 +76,7 @@ class TranscriptionController(
                         )
                     }
                 } catch (t: Throwable) {
+                    Log.e(TAG, "model ensure failed", t)
                     val msg = when {
                         t.message == "offline" || !models.isOnline() ->
                             "آفلاین هستید و مدل فارسی هنوز دانلود نشده است."
@@ -93,91 +91,102 @@ class TranscriptionController(
                     return@launch
                 }
 
-                if (cancelRequested) {
-                    _state.value = TranscriptionUiState(statusFa = "متوقف شد")
+                if (cancelRequested || !isActive) {
+                    _state.value = TranscriptionUiState(statusFa = "متوقف شد", activeMediaId = mediaId)
                     return@launch
                 }
 
                 _state.value = _state.value.copy(
                     isDownloading = false,
-                    progress = 0.05f,
-                    statusFa = "در حال خواندن صدا از رسانه…",
+                    progress = 0.08f,
+                    statusFa = "در حال آماده‌سازی صدا…",
                 )
 
-                val pcm = MediaPcmDecoder.decodeToPcm16Mono(
-                    context = appContext,
-                    uri = Uri.parse(uri),
-                    onProgress = { p ->
-                        _state.value = _state.value.copy(
-                            progress = 0.05f + p * 0.35f,
-                            statusFa = "در حال آماده‌سازی صدا…",
-                        )
-                    },
-                    isCancelled = { cancelRequested || !isActive },
-                )
-
-                if (cancelRequested || !isActive) {
-                    flushPartial(mediaId, title, "")
-                    _state.value = TranscriptionUiState(
-                        statusFa = "متوقف شد",
-                        activeMediaId = mediaId,
-                    )
-                    return@launch
-                }
-
-                _state.value = _state.value.copy(
-                    progress = 0.42f,
-                    statusFa = "در حال تبدیل به متن…",
-                )
+                // Ensure heading exists even before first paragraph
+                store.fileFor(mediaId, title)
 
                 val model = Model(modelDir.absolutePath)
                 val recognizer = Recognizer(model, MediaPcmDecoder.TARGET_SAMPLE_RATE.toFloat())
-                val chunk = ShortArray(CHUNK_SAMPLES)
-                var offset = 0
-                val paragraphs = StringBuilder()
+                var wroteAny = false
+                var gotPcm = false
                 try {
-                    while (offset < pcm.size && !cancelRequested && isActive) {
-                        val len = minOf(CHUNK_SAMPLES, pcm.size - offset)
-                        System.arraycopy(pcm, offset, chunk, 0, len)
-                        offset += len
-                        val bytes = ByteBuffer.allocate(len * 2).order(ByteOrder.LITTLE_ENDIAN)
-                        for (i in 0 until len) bytes.putShort(chunk[i])
-                        val accepted = recognizer.acceptWaveForm(bytes.array(), bytes.array().size)
-                        if (accepted) {
-                            val text = extractText(recognizer.result)
-                            if (text.isNotBlank()) {
-                                paragraphs.append(text).append('\n')
-                                store.appendParagraph(mediaId, title, text)
+                    MediaPcmDecoder.decodeStreaming(
+                        context = appContext,
+                        uri = Uri.parse(uri),
+                        onPcmChunk = { bytes, len ->
+                            if (cancelRequested || !isActive) return@decodeStreaming
+                            if (!gotPcm) {
+                                gotPcm = true
+                                _state.value = _state.value.copy(
+                                    statusFa = "در حال تبدیل به متن…",
+                                )
                             }
-                        }
-                        val p = offset.toFloat() / pcm.size.toFloat()
-                        _state.value = _state.value.copy(
-                            progress = 0.42f + p * 0.55f,
-                            statusFa = "در حال تبدیل به متن… ${(p * 100).toInt()}٪",
-                        )
-                    }
+                            val accepted = recognizer.acceptWaveForm(bytes, len)
+                            if (accepted) {
+                                val text = extractText(recognizer.result)
+                                if (text.isNotBlank()) {
+                                    store.appendParagraph(mediaId, title, text)
+                                    wroteAny = true
+                                    _state.value = _state.value.copy(
+                                        statusFa = "در حال نوشتن متن…",
+                                    )
+                                }
+                            }
+                        },
+                        onProgress = { p ->
+                            _state.value = _state.value.copy(
+                                progress = 0.08f + p * 0.75f,
+                                statusFa = when {
+                                    wroteAny -> "در حال نوشتن متن… ${(p * 100).toInt()}٪"
+                                    gotPcm -> "در حال تبدیل به متن… ${(p * 100).toInt()}٪"
+                                    else -> "در حال آماده‌سازی صدا… ${(p * 100).toInt()}٪"
+                                },
+                            )
+                        },
+                        isCancelled = { cancelRequested || !isActive },
+                        maxSeconds = MediaPcmDecoder.MAX_SECONDS,
+                    )
+
                     val finalText = extractText(recognizer.finalResult)
                     if (finalText.isNotBlank()) {
-                        paragraphs.append(finalText)
                         store.appendParagraph(mediaId, title, finalText)
+                        wroteAny = true
                     }
                 } finally {
                     runCatching { recognizer.close() }
                     runCatching { model.close() }
                 }
 
-                _state.value = TranscriptionUiState(
-                    isRunning = false,
-                    progress = 1f,
-                    statusFa = if (cancelRequested) "متوقف شد" else "متن ذخیره شد",
-                    activeMediaId = mediaId,
-                )
+                if (cancelRequested) {
+                    _state.value = TranscriptionUiState(
+                        isRunning = false,
+                        progress = 1f,
+                        statusFa = "متوقف شد",
+                        activeMediaId = mediaId,
+                    )
+                } else if (!wroteAny) {
+                    _state.value = TranscriptionUiState(
+                        isRunning = false,
+                        progress = 1f,
+                        statusFa = "تبدیل گفتار رسانه به متن",
+                        errorFa = "متنی تشخیص داده نشد. فایل دیگری را امتحان کنید.",
+                        activeMediaId = mediaId,
+                    )
+                } else {
+                    _state.value = TranscriptionUiState(
+                        isRunning = false,
+                        progress = 1f,
+                        statusFa = "متن ذخیره شد",
+                        activeMediaId = mediaId,
+                    )
+                }
             } catch (t: Throwable) {
-                Log.e(TAG, "Transcription failed", t)
+                Log.e(TAG, "Transcription failed uri=$uri", t)
+                val brief = t.message?.take(80)?.takeIf { it.isNotBlank() }
                 _state.value = TranscriptionUiState(
                     isRunning = false,
                     statusFa = "تبدیل گفتار رسانه به متن",
-                    errorFa = "خطا در تبدیل گفتار به متن",
+                    errorFa = brief?.let { "خطا: $it" } ?: "خطا در تبدیل گفتار به متن",
                     activeMediaId = mediaId,
                 )
             }
@@ -186,7 +195,6 @@ class TranscriptionController(
 
     fun stop() {
         cancelRequested = true
-        // Job continues until it flushes finalResult; mark UI immediately
         _state.value = _state.value.copy(statusFa = "در حال توقف…")
     }
 
@@ -217,10 +225,6 @@ class TranscriptionController(
         _state.value = _state.value.copy(viewerText = null, viewerTitle = null)
     }
 
-    private fun flushPartial(mediaId: String, title: String, text: String) {
-        if (text.isNotBlank()) store.appendParagraph(mediaId, title, text)
-    }
-
     private fun extractText(json: String): String {
         return runCatching {
             JSONObject(json).optString("text").trim()
@@ -229,6 +233,5 @@ class TranscriptionController(
 
     companion object {
         private const val TAG = "Transcription"
-        private const val CHUNK_SAMPLES = 4000 // 250ms @ 16kHz
     }
 }

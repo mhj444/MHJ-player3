@@ -84,6 +84,14 @@ class LibraryRepository(
         }
     }
 
+    suspend fun removeFromPlaylist(playlistId: Long, mediaId: String) {
+        playlistDao.removeEntry(playlistId, mediaId)
+    }
+
+    suspend fun reorderPlaylist(playlistId: Long, orderedMediaIds: List<String>) {
+        replacePlaylistEntries(playlistId, orderedMediaIds)
+    }
+
     suspend fun getPlaylistMedia(playlistId: Long): List<MediaItemModel> =
         playlistDao.getMediaInPlaylist(playlistId).map { it.toModel() }
 

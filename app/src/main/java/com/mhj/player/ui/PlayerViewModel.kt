@@ -1,5 +1,6 @@
 package com.mhj.player.ui
 
+import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -23,8 +24,10 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -58,6 +61,19 @@ class PlayerViewModel(
     val playlists: StateFlow<List<PlaylistModel>> = library.observePlaylists()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    private val activePlaylistId = MutableStateFlow<Long?>(null)
+
+    val activePlaylist: StateFlow<PlaylistModel?> = combine(activePlaylistId, playlists) { id, list ->
+        id?.let { pid -> list.firstOrNull { it.id == pid } }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val playlistTracks: StateFlow<List<MediaItemModel>> = activePlaylistId
+        .flatMapLatest { id ->
+            if (id == null) flowOf(emptyList()) else library.observePlaylistMedia(id)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     private val _selectedIds = MutableStateFlow<Set<String>>(emptySet())
     val selectedIds: StateFlow<Set<String>> = _selectedIds
 
@@ -87,6 +103,13 @@ class PlayerViewModel(
                     library.recordPlay(id)
                     library.refreshSmartPlaylists()
                 }
+            }
+        }
+        viewModelScope.launch {
+            // Keep activePlaylist in sync when playlists refresh
+            playlists.collect { list ->
+                val id = activePlaylistId.value ?: return@collect
+                if (list.none { it.id == id }) activePlaylistId.value = null
             }
         }
     }
@@ -140,9 +163,33 @@ class PlayerViewModel(
 
     fun tapAbLoop(): String = playback.tapAbLoop()
 
-    fun openSystemEqualizer(packageName: String): android.content.Intent? {
-        audioEffects.bindSession(audioSessionId())
-        return audioEffects.openSystemEqualizerIntent(packageName)
+    /**
+     * Bind the live audio session (starting playback if needed) and return
+     * OPEN_SESSION broadcast + DISPLAY panel intents with EXTRA_AUDIO_SESSION set.
+     */
+    suspend fun prepareEqualizerIntents(packageName: String): List<Intent> {
+        var session = audioSessionId()
+        if (session <= 0) {
+            playback.awaitConnected()
+            if (!playerState.value.isPlaying && playerState.value.current != null) {
+                playback.togglePlayPause()
+            } else if (playerState.value.current == null) {
+                val queue = allLibraryItems.value.filter { it.kind == MediaKind.MUSIC }
+                if (queue.isNotEmpty()) {
+                    playback.play(queue, 0)
+                }
+            }
+            // Brief wait for ExoPlayer to publish a session id
+            repeat(20) {
+                kotlinx.coroutines.delay(50)
+                session = audioSessionId()
+                if (session > 0) return@repeat
+            }
+            session = audioSessionId()
+        }
+        if (session <= 0) return emptyList()
+        audioEffects.bindSession(session)
+        return audioEffects.buildEqualizerIntents(packageName)
     }
 
     fun toggleTheme() {
@@ -313,12 +360,55 @@ class PlayerViewModel(
     fun createPlaylist(name: String) {
         viewModelScope.launch {
             val trimmed = name.trim().ifEmpty { return@launch }
+            library.createPlaylist(trimmed)
+        }
+    }
+
+    fun openPlaylist(playlistId: Long) {
+        viewModelScope.launch {
+            library.refreshSmartPlaylists()
+            activePlaylistId.value = playlistId
+        }
+    }
+
+    fun removeFromPlaylist(playlistId: Long, mediaId: String) {
+        viewModelScope.launch {
+            library.removeFromPlaylist(playlistId, mediaId)
+        }
+    }
+
+    fun reorderPlaylist(playlistId: Long, orderedMediaIds: List<String>) {
+        viewModelScope.launch {
+            library.reorderPlaylist(playlistId, orderedMediaIds)
+        }
+    }
+
+    fun addMediaToPlaylist(playlistId: Long, mediaId: String) {
+        viewModelScope.launch {
+            val existing = library.getPlaylistMedia(playlistId)
+            if (existing.any { it.id == mediaId }) return@launch
+            library.addToPlaylist(playlistId, mediaId, existing.size)
+        }
+    }
+
+    fun createPlaylistAndAdd(name: String, mediaId: String) {
+        viewModelScope.launch {
+            val trimmed = name.trim().ifEmpty { return@launch }
             val id = library.createPlaylist(trimmed)
-            allLibraryItems.value
-                .filter { it.kind == MediaKind.MUSIC }
-                .forEachIndexed { index, item ->
-                    library.addToPlaylist(id, item.id, index)
-                }
+            library.addToPlaylist(id, mediaId, 0)
+        }
+    }
+
+    fun renameMediaItem(id: String, title: String) {
+        viewModelScope.launch {
+            library.renameMedia(id, title)
+        }
+    }
+
+    fun deleteMediaItem(id: String) {
+        viewModelScope.launch {
+            library.deleteMedia(listOf(id))
+            library.refreshSmartPlaylists()
         }
     }
 
@@ -330,6 +420,7 @@ class PlayerViewModel(
             playback.awaitConnected()
             playback.play(queue, 0)
             library.recordPlay(queue.first().id)
+            library.refreshSmartPlaylists()
         }
     }
 

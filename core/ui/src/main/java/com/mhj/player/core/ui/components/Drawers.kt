@@ -13,6 +13,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -28,6 +30,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -50,7 +53,6 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -58,7 +60,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import android.content.Intent
 import com.mhj.player.core.model.AppSettings
 import com.mhj.player.core.model.AppTheme
 import com.mhj.player.core.model.LibraryFilter
@@ -78,7 +79,7 @@ import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
-private enum class TopPage { ROOT, LIBRARY, PLAYLISTS, FAVORITES, THEME }
+private enum class TopPage { ROOT, LIBRARY, PLAYLISTS, FAVORITES, THEME, PLAYLIST_DETAIL }
 private enum class AudioPage { ROOT, SPEED, TIMER }
 
 @Composable
@@ -87,37 +88,51 @@ fun TopMenuDrawer(
     settings: AppSettings,
     playlists: List<PlaylistModel>,
     libraryItems: List<MediaItemModel>,
+    playlistTracks: List<MediaItemModel>,
+    activePlaylist: PlaylistModel?,
     filter: LibraryFilter,
     selectedIds: Set<String>,
     scanning: Boolean,
     onDismiss: () -> Unit,
     onToggleTheme: () -> Unit,
     onCreatePlaylist: (String) -> Unit,
+    onOpenPlaylist: (Long) -> Unit,
     onPlayPlaylist: (Long) -> Unit,
     onUpdateFilter: ((LibraryFilter) -> LibraryFilter) -> Unit,
     onToggleSelect: (String) -> Unit,
     onClearSelection: () -> Unit,
-    onRenameSelected: (String) -> Unit,
-    onDeleteSelected: () -> Unit,
     onPlayItem: (MediaItemModel) -> Unit,
     onScanDevice: () -> Unit,
     onImportFolder: () -> Unit,
     onAddMusic: () -> Unit = {},
+    onShareItem: (MediaItemModel) -> Unit = {},
+    onDeleteItemAsk: (MediaItemModel) -> Unit = {},
+    onRenameItemAsk: (MediaItemModel) -> Unit = {},
+    onAddItemToPlaylistAsk: (MediaItemModel) -> Unit = {},
+    onRemoveFromPlaylist: (Long, String) -> Unit = { _, _ -> },
+    onReorderPlaylist: (Long, List<String>) -> Unit = { _, _ -> },
+    onSharePlaylistTrack: (MediaItemModel) -> Unit = {},
     modifier: Modifier = Modifier,
     hazeState: HazeState? = null,
 ) {
     var page by remember { mutableStateOf(TopPage.ROOT) }
+    var playlistReturn by remember { mutableStateOf(TopPage.PLAYLISTS) }
     LaunchedEffect(visible) {
         if (!visible) page = TopPage.ROOT
     }
 
     BackHandler(enabled = visible) {
-        if (page != TopPage.ROOT) page = TopPage.ROOT else onDismiss()
+        when (page) {
+            TopPage.ROOT -> onDismiss()
+            TopPage.PLAYLIST_DETAIL -> page = playlistReturn
+            else -> page = TopPage.ROOT
+        }
     }
 
     OverlaySheet(
         visible = visible,
         fromTop = true,
+        tall = page == TopPage.LIBRARY || page == TopPage.PLAYLIST_DETAIL,
         onDismiss = onDismiss,
         modifier = modifier,
         hazeState = hazeState,
@@ -151,18 +166,24 @@ fun TopMenuDrawer(
                 onUpdateFilter = onUpdateFilter,
                 onToggleSelect = onToggleSelect,
                 onClearSelection = onClearSelection,
-                onRenameSelected = onRenameSelected,
-                onDeleteSelected = onDeleteSelected,
                 onPlayItem = onPlayItem,
                 onScanDevice = onScanDevice,
                 onImportFolder = onImportFolder,
                 onAddMusic = onAddMusic,
+                onShareItem = onShareItem,
+                onDeleteItemAsk = onDeleteItemAsk,
+                onRenameItemAsk = onRenameItemAsk,
+                onAddItemToPlaylistAsk = onAddItemToPlaylistAsk,
             )
             TopPage.PLAYLISTS -> PlaylistsPage(
                 playlists = playlists.filter { it.smartKind != "favorites" },
                 onBack = { page = TopPage.ROOT },
                 onCreatePlaylist = onCreatePlaylist,
-                onPlayPlaylist = onPlayPlaylist,
+                onOpenPlaylist = { id ->
+                    playlistReturn = TopPage.PLAYLISTS
+                    onOpenPlaylist(id)
+                    page = TopPage.PLAYLIST_DETAIL
+                },
             )
             TopPage.FAVORITES -> PlaylistsPage(
                 playlists = playlists.filter {
@@ -170,9 +191,23 @@ fun TopMenuDrawer(
                 }.ifEmpty { playlists.filter { !it.isSmart }.take(1) },
                 onBack = { page = TopPage.ROOT },
                 onCreatePlaylist = onCreatePlaylist,
-                onPlayPlaylist = onPlayPlaylist,
+                onOpenPlaylist = { id ->
+                    playlistReturn = TopPage.FAVORITES
+                    onOpenPlaylist(id)
+                    page = TopPage.PLAYLIST_DETAIL
+                },
                 title = "Favorites",
                 subtitle = "علاقه‌مندی‌ها",
+            )
+            TopPage.PLAYLIST_DETAIL -> PlaylistDetailPage(
+                playlist = activePlaylist,
+                tracks = playlistTracks,
+                onBack = { page = playlistReturn },
+                onPlayAll = { id -> onPlayPlaylist(id) },
+                onPlayItem = onPlayItem,
+                onRemove = onRemoveFromPlaylist,
+                onReorder = onReorderPlaylist,
+                onShare = onSharePlaylistTrack,
             )
             TopPage.THEME -> {
                 PageHeader("Theme", "تم") { page = TopPage.ROOT }
@@ -417,7 +452,7 @@ private fun TimerOnlyDial(
 }
 
 @Composable
-private fun LibraryPage(
+private fun ColumnScope.LibraryPage(
     items: List<MediaItemModel>,
     filter: LibraryFilter,
     selectedIds: Set<String>,
@@ -426,15 +461,15 @@ private fun LibraryPage(
     onUpdateFilter: ((LibraryFilter) -> LibraryFilter) -> Unit,
     onToggleSelect: (String) -> Unit,
     onClearSelection: () -> Unit,
-    onRenameSelected: (String) -> Unit,
-    onDeleteSelected: () -> Unit,
     onPlayItem: (MediaItemModel) -> Unit,
     onScanDevice: () -> Unit,
     onImportFolder: () -> Unit,
     onAddMusic: () -> Unit,
+    onShareItem: (MediaItemModel) -> Unit,
+    onDeleteItemAsk: (MediaItemModel) -> Unit,
+    onRenameItemAsk: (MediaItemModel) -> Unit,
+    onAddItemToPlaylistAsk: (MediaItemModel) -> Unit,
 ) {
-    val context = LocalContext.current
-    var renameText by remember { mutableStateOf("") }
     PageHeader("Library", "کتابخانه", onBack)
     Spacer(Modifier.height(8.dp))
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -482,62 +517,19 @@ private fun LibraryPage(
         }
     }
     if (selectedIds.isNotEmpty()) {
-        Spacer(Modifier.height(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ActionChip("Clear") { onClearSelection() }
-            if (selectedIds.size == 1) {
-                ActionChip("Rename") {
-                    if (renameText.isNotBlank()) onRenameSelected(renameText)
-                }
-                ActionChip("Share") {
-                    val item = items.firstOrNull { it.id in selectedIds }
-                    if (item != null) {
-                        val intent = Intent(Intent.ACTION_SEND).apply {
-                            type = if (item.kind == MediaKind.VIDEO) "video/*" else "audio/*"
-                            putExtra(Intent.EXTRA_TEXT, "${item.title}\n${item.uri}")
-                            putExtra(Intent.EXTRA_STREAM, android.net.Uri.parse(item.uri))
-                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        }
-                        context.startActivity(Intent.createChooser(intent, "Share"))
-                    }
-                }
-                ActionChip("Info") { /* info shown inline below */ }
-            }
-            ActionChip("Delete") { onDeleteSelected() }
-        }
-        if (selectedIds.size == 1) {
-            Spacer(Modifier.height(6.dp))
-            BasicTextField(
-                value = renameText,
-                onValueChange = { renameText = it },
-                singleLine = true,
-                textStyle = TextStyle(color = MhjTheme.colors.onBackground, fontSize = 13.sp),
-                cursorBrush = SolidColor(MhjColors.Gold),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(MhjTheme.colors.controlFill)
-                    .padding(10.dp),
-                decorationBox = { inner ->
-                    if (renameText.isEmpty()) Text("New title…", color = MhjTheme.colors.muted, fontSize = 12.sp)
-                    inner()
-                },
-            )
-            items.firstOrNull { it.id in selectedIds }?.let { item ->
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    "Format ${item.format.ifEmpty { "—" }} · Folder ${item.folder.ifEmpty { "—" }} · " +
-                        "${item.durationMs / 1000}s · Plays ${item.playCount}",
-                    color = MhjTheme.colors.muted,
-                    fontSize = 11.sp,
-                )
-            }
-        }
+        Spacer(Modifier.height(6.dp))
+        ActionChip("Clear selection") { onClearSelection() }
     }
     Spacer(Modifier.height(8.dp))
-    LazyColumn(Modifier.height(320.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxWidth()
+            .weight(1f, fill = true),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
         items(items, key = { it.id }) { item ->
             val selected = item.id in selectedIds
+            var menuOpen by remember { mutableStateOf(false) }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -549,7 +541,7 @@ private fun LibraryPage(
                         RoundedCornerShape(14.dp),
                     )
                     .clickable { onPlayItem(item) }
-                    .padding(12.dp),
+                    .padding(horizontal = 10.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(
@@ -582,17 +574,48 @@ private fun LibraryPage(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
+                Box {
+                    Text(
+                        "⋮",
+                        color = MhjColors.GoldHi,
+                        fontSize = 22.sp,
+                        modifier = Modifier
+                            .clickable { menuOpen = true }
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                    )
+                    androidx.compose.material3.DropdownMenu(
+                        expanded = menuOpen,
+                        onDismissRequest = { menuOpen = false },
+                    ) {
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("اشتراک‌گذاری") },
+                            onClick = { menuOpen = false; onShareItem(item) },
+                        )
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("حذف از دستگاه") },
+                            onClick = { menuOpen = false; onDeleteItemAsk(item) },
+                        )
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("افزودن به پلی‌لیست") },
+                            onClick = { menuOpen = false; onAddItemToPlaylistAsk(item) },
+                        )
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("تغییر نام") },
+                            onClick = { menuOpen = false; onRenameItemAsk(item) },
+                        )
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun PlaylistsPage(
+private fun ColumnScope.PlaylistsPage(
     playlists: List<PlaylistModel>,
     onBack: () -> Unit,
     onCreatePlaylist: (String) -> Unit,
-    onPlayPlaylist: (Long) -> Unit,
+    onOpenPlaylist: (Long) -> Unit,
     title: String = "Playlists",
     subtitle: String = "پلی‌لیست‌ها",
 ) {
@@ -633,14 +656,142 @@ private fun PlaylistsPage(
     if (playlists.isEmpty()) {
         Text("No playlists yet", color = MhjTheme.colors.muted, fontSize = 13.sp)
     } else {
-        playlists.forEach { playlist ->
-            Spacer(Modifier.height(8.dp))
-            MenuCard(
-                iconRes = if (MhjTheme.colors.isDark) R.drawable.icon_mid_library else R.drawable.icon_porc_library,
-                title = playlist.name,
-                subtitle = if (playlist.isSmart) "Smart · Play" else "Play",
-                onClick = { onPlayPlaylist(playlist.id) },
-            )
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f, fill = true),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            items(playlists, key = { it.id }) { playlist ->
+                MenuCard(
+                    iconRes = if (MhjTheme.colors.isDark) R.drawable.icon_mid_library else R.drawable.icon_porc_library,
+                    title = playlist.name,
+                    subtitle = if (playlist.isSmart) "Smart · Open" else "Open",
+                    onClick = { onOpenPlaylist(playlist.id) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ColumnScope.PlaylistDetailPage(
+    playlist: PlaylistModel?,
+    tracks: List<MediaItemModel>,
+    onBack: () -> Unit,
+    onPlayAll: (Long) -> Unit,
+    onPlayItem: (MediaItemModel) -> Unit,
+    onRemove: (Long, String) -> Unit,
+    onReorder: (Long, List<String>) -> Unit,
+    onShare: (MediaItemModel) -> Unit,
+) {
+    val id = playlist?.id ?: return
+    val canReorder = playlist?.isSmart != true
+    var order by remember(playlist?.id, tracks) {
+        mutableStateOf(tracks.map { it.id })
+    }
+    LaunchedEffect(tracks) {
+        order = tracks.map { it.id }
+    }
+    val orderedTracks = remember(order, tracks) {
+        val map = tracks.associateBy { it.id }
+        order.mapNotNull { map[it] }
+    }
+    PageHeader(playlist?.name ?: "Playlist", if (playlist?.isSmart == true) "پیش‌فرض" else "پلی‌لیست") { onBack() }
+    Spacer(Modifier.height(8.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ActionChip("Play all") { onPlayAll(id) }
+        if (canReorder) {
+            Text("Long-press ☰ then drag to reorder", color = MhjTheme.colors.muted, fontSize = 11.sp)
+        }
+    }
+    Spacer(Modifier.height(8.dp))
+    if (orderedTracks.isEmpty()) {
+        Text("No songs in this playlist", color = MhjTheme.colors.muted, fontSize = 13.sp)
+    } else {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f, fill = true),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            itemsIndexed(orderedTracks, key = { _, t -> t.id }) { index, item ->
+                var menuOpen by remember { mutableStateOf(false) }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(MhjTheme.colors.elevated)
+                        .then(
+                            if (canReorder) {
+                                Modifier.pointerInput(order) {
+                                    detectDragGesturesAfterLongPress(
+                                        onDrag = { change, drag ->
+                                            change.consume()
+                                            if (drag.y > 28f && index < order.lastIndex) {
+                                                val mutable = order.toMutableList()
+                                                val tmp = mutable[index]
+                                                mutable[index] = mutable[index + 1]
+                                                mutable[index + 1] = tmp
+                                                order = mutable
+                                                onReorder(id, order)
+                                            } else if (drag.y < -28f && index > 0) {
+                                                val mutable = order.toMutableList()
+                                                val tmp = mutable[index]
+                                                mutable[index] = mutable[index - 1]
+                                                mutable[index - 1] = tmp
+                                                order = mutable
+                                                onReorder(id, order)
+                                            }
+                                        },
+                                    )
+                                }
+                            } else {
+                                Modifier
+                            },
+                        )
+                        .clickable { onPlayItem(item) }
+                        .padding(horizontal = 10.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (canReorder) {
+                        Text("☰", color = MhjColors.Gold.copy(alpha = 0.7f), fontSize = 16.sp)
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    Column(Modifier.weight(1f)) {
+                        Text(item.title, color = MhjTheme.colors.onBackground, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(item.artist, color = MhjTheme.colors.muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    Box {
+                        Text(
+                            "⋮",
+                            color = MhjColors.GoldHi,
+                            fontSize = 22.sp,
+                            modifier = Modifier
+                                .clickable { menuOpen = true }
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                        )
+                        androidx.compose.material3.DropdownMenu(
+                            expanded = menuOpen,
+                            onDismissRequest = { menuOpen = false },
+                        ) {
+                            if (canReorder) {
+                                androidx.compose.material3.DropdownMenuItem(
+                                    text = { Text("حذف از این پلی‌لیست") },
+                                    onClick = {
+                                        menuOpen = false
+                                        onRemove(id, item.id)
+                                    },
+                                )
+                            }
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text("اشتراک‌گذاری") },
+                                onClick = { menuOpen = false; onShare(item) },
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -709,6 +860,9 @@ private fun DialCard(
     onProgressChange: (Float) -> Unit,
 ) {
     val c = MhjTheme.colors
+    // Top semicircle gauge (classic speedometer): 180° → 0° counterclockwise over the top.
+    val startDeg = 180.0
+    val sweepDeg = -180.0
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -721,50 +875,51 @@ private fun DialCard(
                 detectDragGestures { change, _ ->
                     change.consume()
                     val cx = size.width / 2f
-                    val cy = size.height / 2f
+                    // Pivot slightly above vertical center so needle sits on the upper arc
+                    val cy = size.height * 0.62f
                     val dx = change.position.x - cx
                     val dy = change.position.y - cy
                     var deg = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble()))
                     if (deg < 0) deg += 360.0
-                    val start = 140.0
-                    val sweep = 260.0
-                    var rel = deg - start
-                    if (rel < 0) rel += 360.0
-                    if (rel > sweep) {
-                        rel = if (rel - sweep < (360.0 - rel)) sweep else 0.0
+                    // Map upper half (180→270→360/0) onto 0..1
+                    val p = when {
+                        deg in 180.0..360.0 -> (deg - 180.0) / 180.0
+                        deg in 0.0..0.01 -> 1.0
+                        else -> if (deg < 90) 1.0 else 0.0
                     }
-                    onProgressChange((rel / sweep).toFloat().coerceIn(0f, 1f))
+                    onProgressChange(p.toFloat().coerceIn(0f, 1f))
                 }
             },
         contentAlignment = Alignment.Center,
     ) {
-        Canvas(Modifier.size(148.dp)) {
+        Canvas(Modifier.fillMaxWidth().height(148.dp)) {
             val stroke = 10.dp.toPx()
             val cx = size.width / 2f
-            val cy = size.height / 2f
-            val radius = size.minDimension / 2f - stroke
+            val cy = size.height * 0.72f
+            val radius = size.minDimension * 0.42f
             drawArc(
                 color = c.controlFill.copy(alpha = 0.85f),
-                startAngle = 140f,
-                sweepAngle = 260f,
+                startAngle = startDeg.toFloat(),
+                sweepAngle = sweepDeg.toFloat(),
                 useCenter = false,
+                topLeft = Offset(cx - radius, cy - radius),
+                size = androidx.compose.ui.geometry.Size(radius * 2, radius * 2),
                 style = Stroke(width = stroke, cap = StrokeCap.Round),
             )
             drawArc(
-                brush = Brush.sweepGradient(
-                    listOf(MhjColors.GoldLo, MhjColors.GoldHi, MhjColors.Gold, MhjColors.GoldLo),
-                    center = Offset(cx, cy),
-                ),
-                startAngle = 140f,
-                sweepAngle = 260f * progress,
+                color = MhjColors.Gold,
+                startAngle = startDeg.toFloat(),
+                sweepAngle = (sweepDeg * progress.coerceIn(0f, 1f)).toFloat(),
                 useCenter = false,
+                topLeft = Offset(cx - radius, cy - radius),
+                size = androidx.compose.ui.geometry.Size(radius * 2, radius * 2),
                 style = Stroke(width = stroke, cap = StrokeCap.Round),
             )
             ticks.forEachIndexed { i, _ ->
                 val t = i / (ticks.size - 1f).coerceAtLeast(1f)
-                val ang = Math.toRadians((140.0 + 260.0 * t))
-                val rOuter = radius + stroke * 0.15f
-                val rInner = rOuter - 10.dp.toPx()
+                val ang = Math.toRadians(startDeg + sweepDeg * t)
+                val rOuter = radius + stroke * 0.2f
+                val rInner = radius - 12.dp.toPx()
                 drawLine(
                     color = MhjColors.GoldHi.copy(alpha = 0.55f),
                     start = Offset(cx + cos(ang).toFloat() * rInner, cy + sin(ang).toFloat() * rInner),
@@ -773,13 +928,14 @@ private fun DialCard(
                     cap = StrokeCap.Round,
                 )
             }
-            val nang = Math.toRadians((140.0 + 260.0 * progress.coerceIn(0f, 1f)))
+            val nang = Math.toRadians(startDeg + sweepDeg * progress.coerceIn(0f, 1f).toDouble())
+            val tipR = radius - 8.dp.toPx()
             drawLine(
                 brush = Brush.linearGradient(listOf(MhjColors.GoldHi, MhjColors.GoldLo)),
                 start = Offset(cx, cy),
                 end = Offset(
-                    cx + cos(nang).toFloat() * (radius - 6.dp.toPx()),
-                    cy + sin(nang).toFloat() * (radius - 6.dp.toPx()),
+                    cx + cos(nang).toFloat() * tipR,
+                    cy + sin(nang).toFloat() * tipR,
                 ),
                 strokeWidth = 3.5.dp.toPx(),
                 cap = StrokeCap.Round,
@@ -796,7 +952,9 @@ private fun DialCard(
             fontSize = 26.sp,
             fontWeight = FontWeight.Bold,
             fontFamily = FontFamily.Serif,
-            modifier = Modifier.padding(top = 52.dp),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 18.dp),
         )
     }
 }
@@ -808,6 +966,7 @@ private fun OverlaySheet(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     hazeState: HazeState? = null,
+    tall: Boolean = false,
     body: @Composable ColumnScope.() -> Unit,
 ) {
     val shape = RoundedCornerShape(
@@ -842,6 +1001,7 @@ private fun OverlaySheet(
                 modifier = Modifier
                     .align(if (fromTop) Alignment.TopCenter else Alignment.BottomCenter)
                     .fillMaxWidth()
+                    .fillMaxHeight(if (tall) 0.90f else if (fromTop) 0.72f else 0.62f)
                     .clip(shape)
                     .then(
                         if (hazeState != null) {

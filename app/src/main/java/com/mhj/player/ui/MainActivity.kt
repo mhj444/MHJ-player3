@@ -17,11 +17,21 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -37,10 +47,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mhj.player.MhjApp
+import com.mhj.player.core.model.MediaItemModel
 import com.mhj.player.core.model.MediaKind
 import com.mhj.player.core.ui.components.BoardBackground
 import com.mhj.player.core.ui.components.BottomAudioDrawer
@@ -115,6 +127,8 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
     val library by viewModel.libraryItems.collectAsStateWithLifecycle()
     val allLibrary by viewModel.allLibraryItems.collectAsStateWithLifecycle()
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
+    val playlistTracks by viewModel.playlistTracks.collectAsStateWithLifecycle()
+    val activePlaylist by viewModel.activePlaylist.collectAsStateWithLifecycle()
     val filter by viewModel.filter.collectAsStateWithLifecycle()
     val selectedIds by viewModel.selectedIds.collectAsStateWithLifecycle()
     val scanning by viewModel.scanning.collectAsStateWithLifecycle()
@@ -127,6 +141,11 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
     val scope = rememberCoroutineScope()
     var topOpen by remember { mutableStateOf(false) }
     var bottomOpen by remember { mutableStateOf(false) }
+    var deleteAsk by remember { mutableStateOf<MediaItemModel?>(null) }
+    var renameAsk by remember { mutableStateOf<MediaItemModel?>(null) }
+    var renameDraft by remember { mutableStateOf("") }
+    var addToPlaylistAsk by remember { mutableStateOf<MediaItemModel?>(null) }
+    var newPlaylistName by remember { mutableStateOf("") }
     val hazeState = remember { HazeState() }
     val onMusicPage by remember {
         derivedStateOf { pagerState.currentPage == PAGE_MUSIC }
@@ -287,12 +306,15 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
                     settings = settings,
                     playlists = playlists,
                     libraryItems = library,
+                    playlistTracks = playlistTracks,
+                    activePlaylist = activePlaylist,
                     filter = filter,
                     selectedIds = selectedIds,
                     scanning = scanning,
                     onDismiss = { topOpen = false },
                     onToggleTheme = viewModel::toggleTheme,
                     onCreatePlaylist = viewModel::createPlaylist,
+                    onOpenPlaylist = viewModel::openPlaylist,
                     onPlayPlaylist = { id ->
                         viewModel.playPlaylist(id)
                         topOpen = false
@@ -301,8 +323,6 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
                     onUpdateFilter = viewModel::updateFilter,
                     onToggleSelect = viewModel::toggleSelect,
                     onClearSelection = viewModel::clearSelection,
-                    onRenameSelected = viewModel::renameSelected,
-                    onDeleteSelected = viewModel::deleteSelected,
                     onPlayItem = { item ->
                         viewModel.playItem(item)
                         topOpen = false
@@ -312,6 +332,19 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
                     onScanDevice = viewModel::scanDeviceLibrary,
                     onImportFolder = { folderLauncher.launch(null) },
                     onAddMusic = { addMusicLauncher.launch(arrayOf("audio/*")) },
+                    onShareItem = { item -> MediaShareHelper.share(context, item) },
+                    onDeleteItemAsk = { item -> deleteAsk = item },
+                    onRenameItemAsk = { item ->
+                        renameAsk = item
+                        renameDraft = item.title
+                    },
+                    onAddItemToPlaylistAsk = { item ->
+                        addToPlaylistAsk = item
+                        newPlaylistName = ""
+                    },
+                    onRemoveFromPlaylist = viewModel::removeFromPlaylist,
+                    onReorderPlaylist = viewModel::reorderPlaylist,
+                    onSharePlaylistTrack = { item -> MediaShareHelper.share(context, item) },
                     hazeState = hazeState,
                 )
                 BottomAudioDrawer(
@@ -349,14 +382,31 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
                         Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                     },
                     onEqClick = {
-                        val intent = viewModel.openSystemEqualizer(context.packageName)
-                        if (intent != null) {
-                            runCatching { context.startActivity(intent) }
-                                .onFailure {
-                                    Toast.makeText(context, "No system equalizer", Toast.LENGTH_SHORT).show()
-                                }
-                        } else {
-                            Toast.makeText(context, "Start playback for EQ", Toast.LENGTH_SHORT).show()
+                        scope.launch {
+                            val intents = viewModel.prepareEqualizerIntents(context.packageName)
+                            if (intents.isEmpty()) {
+                                Toast.makeText(
+                                    context,
+                                    "ابتدا پخش را شروع کنید تا اکولایزر باز شود",
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                                return@launch
+                            }
+                            // First intent is OPEN_SESSION broadcast; second is DISPLAY panel
+                            intents.getOrNull(0)?.let { open ->
+                                runCatching { context.sendBroadcast(open) }
+                            }
+                            val display = intents.getOrNull(1) ?: intents.last()
+                            val launched = runCatching {
+                                context.startActivity(display)
+                            }.isSuccess
+                            if (!launched) {
+                                Toast.makeText(
+                                    context,
+                                    "هیچ پنل اکولایزری روی دستگاه نصب نیست",
+                                    Toast.LENGTH_LONG,
+                                ).show()
+                            }
                         }
                     },
                     onTimerChange = viewModel::setSleepTimerMinutes,
@@ -370,6 +420,105 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
                 body = transcript.viewerText.orEmpty(),
                 onDismiss = viewModel::dismissTranscriptViewer,
             )
+
+            deleteAsk?.let { item ->
+                AlertDialog(
+                    onDismissRequest = { deleteAsk = null },
+                    title = { Text("حذف فایل") },
+                    text = { Text("مطمئنی می‌خوای از دستگاه حذف بشه؟") },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                MediaShareHelper.deleteFromDevice(context, item)
+                                viewModel.deleteMediaItem(item.id)
+                                deleteAsk = null
+                            },
+                        ) { Text("حذف") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { deleteAsk = null }) { Text("انصراف") }
+                    },
+                )
+            }
+
+            renameAsk?.let { item ->
+                AlertDialog(
+                    onDismissRequest = { renameAsk = null },
+                    title = { Text("تغییر نام") },
+                    text = {
+                        OutlinedTextField(
+                            value = renameDraft,
+                            onValueChange = { renameDraft = it },
+                            singleLine = true,
+                            label = { Text("نام جدید") },
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                val name = renameDraft.trim()
+                                if (name.isNotEmpty()) {
+                                    MediaShareHelper.rename(context, item, name)
+                                    viewModel.renameMediaItem(item.id, name)
+                                }
+                                renameAsk = null
+                            },
+                        ) { Text("ذخیره") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { renameAsk = null }) { Text("انصراف") }
+                    },
+                )
+            }
+
+            addToPlaylistAsk?.let { item ->
+                val userPlaylists = playlists.filter { !it.isSmart }
+                AlertDialog(
+                    onDismissRequest = { addToPlaylistAsk = null },
+                    title = { Text("افزودن به پلی‌لیست") },
+                    text = {
+                        Column(Modifier.verticalScroll(rememberScrollState())) {
+                            userPlaylists.forEach { pl ->
+                                Text(
+                                    pl.name,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            viewModel.addMediaToPlaylist(pl.id, item.id)
+                                            addToPlaylistAsk = null
+                                            Toast.makeText(context, "به «${pl.name}» اضافه شد", Toast.LENGTH_SHORT).show()
+                                        }
+                                        .padding(vertical = 10.dp),
+                                )
+                            }
+                            OutlinedTextField(
+                                value = newPlaylistName,
+                                onValueChange = { newPlaylistName = it },
+                                singleLine = true,
+                                label = { Text("پلی‌لیست جدید") },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 8.dp),
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                val name = newPlaylistName.trim()
+                                if (name.isNotEmpty()) {
+                                    viewModel.createPlaylistAndAdd(name, item.id)
+                                    Toast.makeText(context, "پلی‌لیست ساخته شد", Toast.LENGTH_SHORT).show()
+                                }
+                                addToPlaylistAsk = null
+                            },
+                        ) { Text("ایجاد") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { addToPlaylistAsk = null }) { Text("بستن") }
+                    },
+                )
+            }
         }
     }
 }
