@@ -69,6 +69,16 @@ interface PlaylistDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertEntry(entry: PlaylistEntryEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertEntries(entries: List<PlaylistEntryEntity>)
+
+    /** All at once, so the screen never sees the list half-written (no flicker). */
+    @Transaction
+    suspend fun replaceEntries(playlistId: Long, entries: List<PlaylistEntryEntity>) {
+        clearEntries(playlistId)
+        insertEntries(entries)
+    }
+
     @Query("DELETE FROM playlist_entries WHERE playlistId = :playlistId")
     suspend fun clearEntries(playlistId: Long)
 

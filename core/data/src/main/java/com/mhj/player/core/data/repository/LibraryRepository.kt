@@ -90,10 +90,7 @@ class LibraryRepository(
     }
 
     suspend fun replacePlaylistEntries(playlistId: Long, mediaIds: List<String>) {
-        playlistDao.clearEntries(playlistId)
-        mediaIds.forEachIndexed { index, id ->
-            playlistDao.insertEntry(PlaylistEntryEntity(playlistId, id, index))
-        }
+        playlistDao.replaceEntries(playlistId, mediaIds.distinct().mapIndexed { index, id -> PlaylistEntryEntity(playlistId, id, index) })
     }
 
     suspend fun renamePlaylist(id: Long, name: String) = playlistDao.rename(id, name)

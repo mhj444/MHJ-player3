@@ -70,9 +70,11 @@ class AudioEngine(private val context: Context) {
             val g = if (eqOn) s.eqGains.getOrElse(i) { 0f }.coerceIn(-Eq.MAX_DB, Eq.MAX_DB) else 0f
             d.setPreEqBandAllChannelsTo(i, DynamicsProcessing.EqBand(eqOn, cutoffs[i], g))
         }
-        // Keep the loudest boost from clipping: lower the input by part of the biggest boost.
+        // Headroom: lower the input by (almost) the biggest boost, so the limiter below rarely has
+        // to work. A limiter working all the time makes the level go up and down ("pumping").
         val maxBoost = if (eqOn) (s.eqGains.maxOrNull() ?: 0f).coerceAtLeast(0f) else 0f
-        d.setInputGainAllChannelsTo((if (eqOn) s.eqPreamp else 0f) - maxBoost * 0.5f)
+        val talkBoost = if (s.dialogueClarity) 4f else 0f
+        d.setInputGainAllChannelsTo((if (eqOn) s.eqPreamp else 0f) - maxBoost * 0.9f - talkBoost)
 
         // Night mode: compress loud parts, lift quiet ones (+ make-up gain), never above the limiter.
         val night = s.nightModeAudio
@@ -81,7 +83,7 @@ class AudioEngine(private val context: Context) {
             0,
             DynamicsProcessing.MbcBand(
                 night, 20_000f,
-                5f, 120f,     // attack, release (ms)
+                10f, 300f,    // attack, release (ms) — slow release, no audible pumping
                 4f, -32f,     // ratio, threshold (dB)
                 8f,           // knee
                 -70f, 1f,     // noise gate, expander
@@ -97,10 +99,13 @@ class AudioEngine(private val context: Context) {
             d.setPostEqBandAllChannelsTo(i, DynamicsProcessing.EqBand(talk, cut, if (talk) gain else 0f))
         }
 
-        // Limiter on whenever something can raise the level.
+        // Safety limiter only at the very top, with a slow release so it is not heard.
         val limit = night || talk || maxBoost > 0f || s.eqPreamp > 0f
-        d.setLimiterAllChannelsTo(DynamicsProcessing.Limiter(true, limit, 0, 1f, 60f, 10f, -1f, 0f))
-        d.enabled = true
+        d.setLimiterAllChannelsTo(DynamicsProcessing.Limiter(true, limit, 0, 2f, 250f, 8f, -0.5f, 0f))
+        // Nothing to do (flat EQ, night mode and dialogue off): switch the effect off completely,
+        // so the sound is exactly the file's own.
+        val anything = night || talk || (eqOn && (s.eqGains.any { it != 0f } || s.eqPreamp != 0f))
+        d.enabled = anything
     }
 
     private fun applyEq(e: Equalizer, s: AppSettings) {

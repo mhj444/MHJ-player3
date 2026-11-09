@@ -585,6 +585,7 @@ private fun ColumnScope.PlaylistsPage(
             val dragging = draggingId == pl.id
             Box(
                 Modifier
+                    .then(if (dragging) Modifier else Modifier.animateItem())
                     .zIndex(if (dragging) 4f else 0f)
                     .graphicsLayer { if (dragging) { translationY = dragOffsetY; scaleX = 1.04f; scaleY = 1.04f } }
                     .tapOrHoldDrag(
@@ -684,8 +685,15 @@ private fun ColumnScope.PlaylistDetailPage(
     var order by remember(id) { mutableStateOf(tracks.map { it.id }) }
     var draggingId by remember { mutableStateOf<String?>(null) }
     var dragOffsetY by remember { mutableFloatStateOf(0f) }
+    // After a drop, keep showing the new order until the saved list comes back the same,
+    // instead of jumping back to the old order for a moment.
+    var pendingOrder by remember { mutableStateOf<List<String>?>(null) }
     LaunchedEffect(tracks.map { it.id }) {
-        if (draggingId == null) order = tracks.map { it.id }
+        val ids = tracks.map { it.id }
+        val p = pendingOrder
+        if (p != null && ids != p && ids.toSet() == p.toSet()) return@LaunchedEffect
+        pendingOrder = null
+        if (draggingId == null) order = ids
     }
     val byId = remember(tracks) { tracks.associateBy { it.id } }
     val orderedTracks = order.mapNotNull { byId[it] }
@@ -721,6 +729,7 @@ private fun ColumnScope.PlaylistDetailPage(
             val dragging = draggingId == item.id
             Row(
                 modifier = Modifier
+                    .then(if (dragging) Modifier else Modifier.animateItem())
                     .fillMaxWidth()
                     .height(68.dp)
                     .zIndex(if (dragging) 4f else 0f)
@@ -765,6 +774,7 @@ private fun ColumnScope.PlaylistDetailPage(
                             }
                         },
                         onEnd = {
+                            pendingOrder = order
                             onReorder(id, order)
                             draggingId = null
                             dragOffsetY = 0f
