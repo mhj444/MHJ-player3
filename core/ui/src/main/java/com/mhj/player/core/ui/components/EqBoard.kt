@@ -1,5 +1,7 @@
 package com.mhj.player.core.ui.components
 
+import com.mhj.player.core.model.L
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown

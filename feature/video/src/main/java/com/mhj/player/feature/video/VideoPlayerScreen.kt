@@ -1,5 +1,7 @@
 package com.mhj.player.feature.video
 
+import com.mhj.player.core.model.L
+
 import android.app.Activity
 import android.content.res.Configuration
 import android.media.AudioManager

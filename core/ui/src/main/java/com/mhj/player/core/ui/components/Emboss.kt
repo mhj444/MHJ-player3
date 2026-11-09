@@ -1,5 +1,7 @@
 package com.mhj.player.core.ui.components
 
+import com.mhj.player.core.model.L
+
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
