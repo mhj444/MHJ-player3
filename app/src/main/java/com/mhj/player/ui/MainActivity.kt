@@ -50,6 +50,10 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -320,6 +324,69 @@ private fun PlayerRoot(
             }.getOrElse { L.pick("بازیابی نشد: ", "Could not restore: ") + (it.message ?: "") }
         }
     }
+    // ---------------------------------------------------------------- real file changes
+    val fileScope = androidx.compose.runtime.rememberCoroutineScope()
+    var pendingGrant by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val grantLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { r ->
+        val then = pendingGrant
+        pendingGrant = null
+        if (r.resultCode == android.app.Activity.RESULT_OK) then?.invoke()
+    }
+    /** Android asks once ("Allow changes to these files?"), then [action] runs. */
+    fun withFilePermission(items: List<MediaItemModel>, delete: Boolean, action: () -> Unit) {
+        val sender = runCatching {
+            if (delete) MediaFileOps.deleteRequest(context, items) else MediaFileOps.writeRequest(context, items)
+        }.getOrNull()
+        if (sender == null) { action(); return }
+        pendingGrant = action
+        grantLauncher.launch(androidx.activity.result.IntentSenderRequest.Builder(sender).build())
+    }
+    fun deleteFiles(items: List<MediaItemModel>) {
+        if (items.isEmpty()) return
+        val (store, other) = items.partition { MediaFileOps.isMediaStore(it) }
+        other.forEach { MediaShareHelper.deleteFromDevice(context, it); viewModel.deleteMediaItem(it.id) }
+        if (store.isNotEmpty()) withFilePermission(store, delete = true) {
+            // Android has deleted them; take them out of the library too.
+            store.forEach { viewModel.deleteMediaItem(it.id) }
+            Toast.makeText(context, L.pick("${store.size} فایل حذف شد", "${store.size} files deleted"), Toast.LENGTH_SHORT).show()
+        }
+    }
+    var moveAsk by remember { mutableStateOf<List<MediaItemModel>?>(null) }
+    var folderRenameAsk by remember { mutableStateOf<Pair<String, List<MediaItemModel>>?>(null) }
+    var folderDeleteAsk by remember { mutableStateOf<Pair<String, List<MediaItemModel>>?>(null) }
+    fun moveFiles(items: List<MediaItemModel>, dest: (MediaItemModel) -> String?) {
+        val store = items.filter { MediaFileOps.isMediaStore(it) }
+        if (store.isEmpty()) {
+            Toast.makeText(context, L.t("این فایل‌ها را نمی‌شود جابه‌جا کرد"), Toast.LENGTH_SHORT).show(); return
+        }
+        withFilePermission(store, delete = false) {
+            fileScope.launch {
+                val ok = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    store.count { item -> dest(item)?.let { MediaFileOps.move(context, item, it) } == true }
+                }
+                viewModel.scanDeviceLibrary()
+                Toast.makeText(
+                    context,
+                    if (ok == store.size) L.pick("$ok فایل جابه‌جا شد", "$ok files moved")
+                    else L.pick("$ok از ${store.size} فایل جابه‌جا شد (اندروید بعضی پوشه‌ها را برای این نوع فایل اجازه نمی‌دهد)", "$ok of ${store.size} moved (Android doesn't allow some folders for this file type)"),
+                    Toast.LENGTH_LONG,
+                ).show()
+            }
+        }
+    }
+    val subtitleLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        val cur = viewModel.playerState.value.current ?: return@rememberLauncherForActivityResult
+        if (uri == null) return@rememberLauncherForActivityResult
+        fileScope.launch {
+            val got = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { MediaFileOps.importSubtitle(context, uri, cur.id) }
+            if (got == null) {
+                Toast.makeText(context, L.t("این فایل زیرنویس خوانده نشد"), Toast.LENGTH_SHORT).show()
+            } else {
+                viewModel.attachSubtitle(cur.id, got.first.absolutePath, got.second)
+                Toast.makeText(context, L.t("زیرنویس اضافه شد"), Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
     val pickVideoLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri: Uri? ->
@@ -419,6 +486,7 @@ private fun PlayerRoot(
                             pickVideoLauncher.launch(arrayOf("video/*"))
                         },
                         onEnterPip = onEnterPip,
+                        onPickSubtitle = { subtitleLauncher.launch(arrayOf("*/*")) },
                     )
                     else -> MusicPlayerScreen(
                         state = playerState,
@@ -519,6 +587,9 @@ private fun PlayerRoot(
                     onBackupSave = { backupSaveLauncher.launch("MHJ-Backup.json") },
                     onBackupRestore = { backupOpenLauncher.launch(arrayOf("application/json", "text/plain", "application/octet-stream", "*/*")) },
                     backupStatus = backupStatus,
+                    onMoveAsk = { moveAsk = it },
+                    onRenameFolderAsk = { n, f -> folderRenameAsk = n to f },
+                    onDeleteFolderAsk = { n, f -> folderDeleteAsk = n to f },
                     onRenamePlaylist = viewModel::renamePlaylist,
                     onSetEnglish = { viewModel.setEnglishUi(it) },
                     onDeletePlaylist = viewModel::deletePlaylist,
@@ -569,9 +640,8 @@ private fun PlayerRoot(
                     confirmButton = {
                         TextButton(
                             onClick = {
-                                MediaShareHelper.deleteFromDevice(context, item)
-                                viewModel.deleteMediaItem(item.id)
                                 deleteAsk = null
+                                deleteFiles(listOf(item))
                             },
                         ) { Text(L.t("حذف")) }
                     },
@@ -597,11 +667,21 @@ private fun PlayerRoot(
                         TextButton(
                             onClick = {
                                 val name = renameDraft.trim()
-                                if (name.isNotEmpty()) {
-                                    MediaShareHelper.rename(context, item, name)
-                                    viewModel.renameMediaItem(item.id, name)
-                                }
                                 renameAsk = null
+                                if (name.isNotEmpty()) {
+                                    if (MediaFileOps.isMediaStore(item)) {
+                                        withFilePermission(listOf(item), delete = false) {
+                                            fileScope.launch {
+                                                val ok = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { MediaFileOps.rename(context, item, name) }
+                                                viewModel.renameMediaItem(item.id, name)
+                                                if (!ok) Toast.makeText(context, L.t("نام فایل در گوشی عوض نشد"), Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    } else {
+                                        MediaShareHelper.rename(context, item, name)
+                                        viewModel.renameMediaItem(item.id, name)
+                                    }
+                                }
                             },
                         ) { Text(L.t("ذخیره")) }
                     },
@@ -619,18 +699,52 @@ private fun PlayerRoot(
                     confirmButton = {
                         TextButton(
                             onClick = {
-                                viewModel.selectedMediaItems().forEach { item ->
-                                    MediaShareHelper.deleteFromDevice(context, item)
-                                    viewModel.deleteMediaItem(item.id)
-                                }
+                                val sel = viewModel.selectedMediaItems()
                                 viewModel.clearSelection()
                                 deleteSelectedAsk = false
+                                deleteFiles(sel)
                             },
                         ) { Text(L.t("حذف")) }
                     },
                     dismissButton = {
                         TextButton(onClick = { deleteSelectedAsk = false }) { Text(L.t("انصراف")) }
                     },
+                )
+            }
+
+            moveAsk?.let { items ->
+                MoveDialog(items.size, onDismiss = { moveAsk = null }) { folder ->
+                    moveAsk = null
+                    moveFiles(items) { folder }
+                }
+            }
+            folderRenameAsk?.let { (name, files) ->
+                var draft by remember(name) { mutableStateOf(name) }
+                AlertDialog(
+                    onDismissRequest = { folderRenameAsk = null },
+                    title = { Text(L.t("تغییر نام پوشه")) },
+                    text = { OutlinedTextField(draft, { draft = it }, singleLine = true, label = { Text(L.t("نام جدید")) }) },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            folderRenameAsk = null
+                            val n = draft.trim()
+                            if (n.isNotEmpty() && n != name) moveFiles(files) { item ->
+                                MediaFileOps.relativePath(context, item)?.let { MediaFileOps.renamedFolder(it, n) }
+                            }
+                        }) { Text(L.t("ذخیره")) }
+                    },
+                    dismissButton = { TextButton(onClick = { folderRenameAsk = null }) { Text(L.t("انصراف")) } },
+                )
+            }
+            folderDeleteAsk?.let { (name, files) ->
+                AlertDialog(
+                    onDismissRequest = { folderDeleteAsk = null },
+                    title = { Text(L.t("حذف پوشه از دستگاه")) },
+                    text = { Text(L.pick("همهٔ ${files.size} فایل پوشهٔ «$name» از گوشی پاک شوند؟", "Delete all ${files.size} files in “$name” from the phone?")) },
+                    confirmButton = {
+                        TextButton(onClick = { folderDeleteAsk = null; deleteFiles(files) }) { Text(L.t("حذف"), color = androidx.compose.ui.graphics.Color(0xFFE57373)) }
+                    },
+                    dismissButton = { TextButton(onClick = { folderDeleteAsk = null }) { Text(L.t("انصراف")) } },
                 )
             }
 
@@ -665,4 +779,47 @@ private fun PlayerRoot(
             )
         }
     }
+}
+
+
+/** Pick where to move files: an existing folder on the phone, or a new one. */
+@Composable
+private fun MoveDialog(count: Int, onDismiss: () -> Unit, onPick: (String) -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val folders by androidx.compose.runtime.produceState(emptyList<String>()) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { MediaFileOps.allFolders(context) }
+    }
+    var newName by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(L.pick("انتقال $count فایل به…", "Move $count files to…")) },
+        text = {
+            Column {
+                OutlinedTextField(
+                    newName, { newName = it }, singleLine = true,
+                    label = { Text(L.t("پوشهٔ تازه در Music")) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(10.dp))
+                androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxWidth().heightIn(max = 320.dp)) {
+                    items(folders.size) { i ->
+                        val f = folders[i]
+                        Column(
+                            Modifier.fillMaxWidth().clickable { onPick(f) }.padding(vertical = 10.dp, horizontal = 4.dp),
+                        ) {
+                            Text(f.trimEnd('/').substringAfterLast('/'), fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+                            Text(f, fontSize = 11.sp, color = androidx.compose.ui.graphics.Color.Gray)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val n = newName.trim().trim('/')
+                if (n.isNotEmpty()) onPick("Music/$n/")
+            }) { Text(L.t("ساختن و انتقال")) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(L.t("انصراف")) } },
+    )
 }

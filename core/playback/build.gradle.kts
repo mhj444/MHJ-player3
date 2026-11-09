@@ -36,5 +36,7 @@ dependencies {
     api("androidx.media3:media3-session:$media3")
     api("androidx.media3:media3-ui:$media3")
     api("androidx.media3:media3-common:$media3")
+    // FFmpeg audio decoders (AC3, E-AC3, DTS, TrueHD, ALAC, WMA… that many phones can't play).
+    implementation("org.jellyfin.media3:media3-ffmpeg-decoder:1.5.0+1")
 
 }

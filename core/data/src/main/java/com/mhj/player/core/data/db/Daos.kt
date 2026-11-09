@@ -12,11 +12,16 @@ interface MediaItemDao {
     @Query("SELECT * FROM media_items ORDER BY title COLLATE NOCASE ASC")
     fun observeAll(): Flow<List<MediaItemEntity>>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    // @Upsert updates rows in place. (REPLACE deleted and re-inserted them, which also
+    // emptied every playlist those songs were in.)
+    @androidx.room.Upsert
     suspend fun upsert(item: MediaItemEntity)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @androidx.room.Upsert
     suspend fun upsertAll(items: List<MediaItemEntity>)
+
+    @Query("SELECT * FROM media_items WHERE id IN (:ids)")
+    suspend fun getByIds(ids: List<String>): List<MediaItemEntity>
 
     @Query("SELECT * FROM media_items WHERE id = :id LIMIT 1")
     suspend fun getById(id: String): MediaItemEntity?

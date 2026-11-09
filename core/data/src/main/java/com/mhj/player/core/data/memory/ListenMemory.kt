@@ -44,7 +44,9 @@ object ListenMemory {
     fun resumeAt(mediaId: String): Long = (_positions.value[mediaId] ?: 0L).coerceAtLeast(0L)
 
     fun remember(mediaId: String, positionMs: Long, durationMs: Long) {
-        if (mediaId.isBlank() || durationMs < LONG_FILE_MS) return
+        // Videos (films, episodes) from 3 minutes; music / audio from 10 minutes.
+        val min = if (mediaId.startsWith("video_") || mediaId.startsWith("saf_v")) 3 * 60_000L else LONG_FILE_MS
+        if (mediaId.isBlank() || durationMs < min) return
         val v = when {
             positionMs >= durationMs - 30_000 -> FINISHED
             positionMs < 5_000 -> return
@@ -65,6 +67,18 @@ object ListenMemory {
         val o = JSONObject()
         _positions.value.forEach { (k, v) -> o.put(k, v) }
         prefs?.edit()?.putString("positions", o.toString())?.apply()
+    }
+
+    // ---------------------------------------------------------------- subtitles
+
+    /** Subtitle file chosen for a video: (file path, mime type). */
+    fun subtitleFor(mediaId: String): Pair<String, String>? =
+        prefs?.getString("sub_$mediaId", null)?.split('|')?.takeIf { it.size == 2 && java.io.File(it[0]).exists() }?.let { it[0] to it[1] }
+
+    fun setSubtitle(mediaId: String, path: String?, mime: String?) {
+        prefs?.edit()?.apply {
+            if (path == null) remove("sub_$mediaId") else putString("sub_$mediaId", "$path|$mime")
+        }?.apply()
     }
 
     // ---------------------------------------------------------------- bookmarks

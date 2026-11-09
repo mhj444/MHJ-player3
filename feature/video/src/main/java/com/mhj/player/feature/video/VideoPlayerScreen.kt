@@ -34,6 +34,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Forward10
 import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.PictureInPictureAlt
+import androidx.compose.material.icons.outlined.ClosedCaption
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Replay10
 import androidx.compose.material.icons.outlined.VideoLibrary
@@ -98,6 +99,8 @@ fun VideoPlayerScreen(
     modifier: Modifier = Modifier,
     inPip: Boolean = false,
     onEnterPip: () -> Unit = {},
+    onPickSubtitle: () -> Unit = {},
+    onSubtitleOff: () -> Unit = {},
 ) {
     val colors = MhjTheme.colors
     val context = LocalContext.current
@@ -111,6 +114,20 @@ fun VideoPlayerScreen(
         PlayerView(ContextThemeWrapper(context, com.mhj.player.feature.video.R.style.MhjPlayerView)).apply {
             useController = false
             resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+            keepScreenOn = true
+            // Subtitles: white Vazir text with a black outline, easy to read on any picture.
+            subtitleView?.apply {
+                val tf = runCatching { androidx.core.content.res.ResourcesCompat.getFont(context, com.mhj.player.core.ui.R.font.vazir_bold) }.getOrNull()
+                setStyle(
+                    androidx.media3.ui.CaptionStyleCompat(
+                        android.graphics.Color.WHITE, android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT,
+                        androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_OUTLINE, android.graphics.Color.BLACK, tf,
+                    ),
+                )
+                setApplyEmbeddedStyles(false)
+                setFractionalTextSize(0.058f)
+                setBottomPaddingFraction(0.06f)
+            }
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -234,6 +251,12 @@ fun VideoPlayerScreen(
                                 chromeVisible = !chromeVisible
                                 if (chromeVisible) bumpHide.value.invoke()
                             },
+                            // Like YouTube: double tap the left side = 10 s back, right side = 10 s forward.
+                            onDoubleTap = { off ->
+                                val back = off.x < size.width / 2f
+                                onSeekBy(if (back) -10_000L else 10_000L)
+                                showHud(GestureHud.Seek, (if (back) L.pick("عقب ", "Back ") else L.pick("جلو ", "Forward ")) + Fa.num(10) + L.pick(" ثانیه", " s"))
+                            },
                         )
                     }
                     .then(
@@ -335,6 +358,14 @@ fun VideoPlayerScreen(
                     modifier = Modifier.weight(1f),
                 )
                 if (hasVideo) {
+                    Box {
+                        var ccOpen by remember { mutableStateOf(false) }
+                        VideoChip(onClick = { ccOpen = true }) {
+                            Icon(Icons.Outlined.ClosedCaption, L.t("زیرنویس"), tint = MhjColors.GoldHi, modifier = Modifier.size(21.dp))
+                        }
+                        SubtitleMenu(ccOpen, { ccOpen = false }, player, onPickSubtitle, onSubtitleOff)
+                    }
+                    Spacer(Modifier.width(10.dp))
                     VideoChip(onClick = { onEnterPip() }) {
                         Icon(Icons.Outlined.PictureInPictureAlt, L.t("پنجرهٔ کوچک"), tint = MhjColors.GoldHi, modifier = Modifier.size(21.dp))
                     }
@@ -470,3 +501,51 @@ private fun VideoChip(onClick: () -> Unit, content: @Composable () -> Unit) {
     ) { content() }
 }
 
+
+
+/** Subtitle choices: the video's own subtitle tracks, a file from the phone, or off. */
+@Composable
+private fun SubtitleMenu(
+    open: Boolean,
+    onClose: () -> Unit,
+    player: androidx.media3.common.Player?,
+    onPickFile: () -> Unit,
+    onOff: () -> Unit,
+) {
+    androidx.compose.material3.DropdownMenu(expanded = open, onDismissRequest = onClose) {
+        val p = player
+        val groups = p?.currentTracks?.groups.orEmpty().filter { it.type == androidx.media3.common.C.TRACK_TYPE_TEXT }
+        val textOff = p?.trackSelectionParameters?.disabledTrackTypes?.contains(androidx.media3.common.C.TRACK_TYPE_TEXT) == true
+        groups.forEachIndexed { gi, g ->
+            for (i in 0 until g.length) {
+                val f = g.getTrackFormat(i)
+                val name = f.label ?: f.language?.let { java.util.Locale(it).displayLanguage } ?: (L.t("زیرنویس") + " " + Fa.num(gi + 1))
+                val on = !textOff && g.isTrackSelected(i)
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text((if (on) "✓  " else "     ") + name) },
+                    onClick = {
+                        onClose()
+                        p?.let { pl ->
+                            pl.trackSelectionParameters = pl.trackSelectionParameters.buildUpon()
+                                .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, false)
+                                .setOverrideForType(androidx.media3.common.TrackSelectionOverride(g.mediaTrackGroup, i))
+                                .build()
+                        }
+                    },
+                )
+            }
+        }
+        androidx.compose.material3.DropdownMenuItem(text = { Text(L.t("زیرنویس از فایل…")) }, onClick = { onClose(); onPickFile() })
+        androidx.compose.material3.DropdownMenuItem(
+            text = { Text((if (textOff || groups.isEmpty()) "✓  " else "     ") + L.t("بدون زیرنویس")) },
+            onClick = {
+                onClose()
+                p?.let { pl ->
+                    pl.trackSelectionParameters = pl.trackSelectionParameters.buildUpon()
+                        .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, true).build()
+                }
+                onOff()
+            },
+        )
+    }
+}

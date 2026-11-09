@@ -18,7 +18,21 @@ object PlayerHolder {
     fun getOrCreatePlayer(context: Context): ExoPlayer {
         player?.let { return it }
         return synchronized(this) {
-            player ?: ExoPlayer.Builder(context.applicationContext)
+            player ?: ExoPlayer.Builder(
+                context.applicationContext,
+                // Phone decoders first (best quality, hardware), FFmpeg for formats the phone lacks;
+                // if a hardware decoder fails, try the next one instead of stopping.
+                androidx.media3.exoplayer.DefaultRenderersFactory(context.applicationContext)
+                    .setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+                    .setEnableDecoderFallback(true),
+                androidx.media3.exoplayer.source.DefaultMediaSourceFactory(
+                    context.applicationContext,
+                    androidx.media3.extractor.DefaultExtractorsFactory()
+                        // Accurate seeking in MP3 / AAC files without an index.
+                        .setConstantBitrateSeekingEnabled(true)
+                        .setConstantBitrateSeekingAlwaysEnabled(true),
+                ),
+            )
                 .setHandleAudioBecomingNoisy(true)
                 .setSeekBackIncrementMs(10_000)
                 .setSeekForwardIncrementMs(10_000)

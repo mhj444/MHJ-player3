@@ -40,8 +40,20 @@ class LibraryRepository(
         mediaItemDao.upsert(item.toEntity())
     }
 
+    /** Adds new files and refreshes known ones, keeping play counts and names you changed. */
     suspend fun upsertMedia(items: List<MediaItemModel>) {
-        mediaItemDao.upsertAll(items.map { it.toEntity() })
+        if (items.isEmpty()) return
+        val known = items.map { it.id }.chunked(500).flatMap { mediaItemDao.getByIds(it) }.associateBy { it.id }
+        val merged = items.map { n ->
+            val old = known[n.id]?.toModel() ?: return@map n.toEntity()
+            n.copy(
+                title = old.title,
+                playCount = old.playCount,
+                lastPlayedAt = old.lastPlayedAt,
+                dateAddedMs = if (old.dateAddedMs > 0) old.dateAddedMs else n.dateAddedMs,
+            ).toEntity()
+        }
+        merged.chunked(500).forEach { mediaItemDao.upsertAll(it) }
     }
 
     suspend fun renameMedia(id: String, title: String) {

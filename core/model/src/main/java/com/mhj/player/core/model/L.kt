@@ -86,6 +86,14 @@ object L {
         "نشانک‌ها" to "Bookmarks", "هنوز نشانکی ندارید" to "No bookmarks yet",
         "همهٔ پوشه‌ها" to "All folders", "پخش همهٔ پوشه" to "Play folder", "پوشه‌ها" to "Folders",
         "۱×" to "1×",
+        // Files, folders, subtitles
+        "انتقال به پوشهٔ دیگر" to "Move to another folder", "انتقال همهٔ فایل‌ها" to "Move all files",
+        "تغییر نام پوشه" to "Rename folder", "حذف پوشه از دستگاه" to "Delete folder from phone",
+        "نام فایل در گوشی عوض نشد" to "The file name on the phone was not changed",
+        "این فایل‌ها را نمی‌شود جابه‌جا کرد" to "These files can't be moved",
+        "پوشهٔ تازه در Music" to "New folder in Music", "ساختن و انتقال" to "Create and move",
+        "زیرنویس" to "Subtitles", "زیرنویس از فایل…" to "Subtitle from file…", "بدون زیرنویس" to "No subtitles",
+        "زیرنویس اضافه شد" to "Subtitles added", "این فایل زیرنویس خوانده نشد" to "Couldn't read this subtitle file",
         // A-B messages
         "اول یک آهنگ پخش کنید" to "Play something first", "نقطهٔ B باید بعد از A باشد" to "Point B must be after A",
         "تکرار A-B خاموش شد" to "A-B repeat off",

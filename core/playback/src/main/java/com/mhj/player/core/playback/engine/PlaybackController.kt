@@ -211,6 +211,23 @@ class PlaybackController(
         controller?.let { publish(it) }
     }
 
+    /** Adds a subtitle file to the video that is playing, keeping its place. */
+    fun attachSubtitle(path: String, mime: String) {
+        val c = controller ?: return
+        val item = c.currentMediaItem ?: return
+        val index = c.currentMediaItemIndex
+        val pos = c.currentPosition
+        val wasPlaying = c.playWhenReady
+        val updated = item.buildUpon().setSubtitleConfigurations(listOf(subtitleConfig(path, mime))).build()
+        c.replaceMediaItem(index, updated)
+        c.seekTo(index, pos)
+        c.trackSelectionParameters = c.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, false)
+            .clearOverridesOfType(androidx.media3.common.C.TRACK_TYPE_TEXT)
+            .build()
+        c.playWhenReady = wasPlaying
+    }
+
     fun playerOrNull(): Player? = controller
 
     fun audioSessionId(): Int =
@@ -335,12 +352,24 @@ fun MediaItemModel.toMediaItem(): MediaItem {
         .setIsPlayable(true)
         .setExtras(extras)
         .build()
+    val sub = com.mhj.player.core.data.memory.ListenMemory.subtitleFor(id)
     return MediaItem.Builder()
         .setMediaId(id)
         .setUri(uri)
         .setMediaMetadata(metadata)
+        .apply {
+            if (sub != null) setSubtitleConfigurations(listOf(subtitleConfig(sub.first, sub.second)))
+        }
         .build()
 }
+
+fun subtitleConfig(path: String, mime: String): MediaItem.SubtitleConfiguration =
+    MediaItem.SubtitleConfiguration.Builder(android.net.Uri.fromFile(java.io.File(path)))
+        .setMimeType(mime)
+        .setLanguage("fa")
+        .setLabel("زیرنویس")
+        .setSelectionFlags(androidx.media3.common.C.SELECTION_FLAG_DEFAULT)
+        .build()
 
 const val MEDIA_KIND_EXTRA = "mhj_media_kind"
 const val MEDIA_FOLDER_EXTRA = "mhj_media_folder"

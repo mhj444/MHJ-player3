@@ -128,6 +128,9 @@ fun TopMenuDrawer(
     listenPositions: Map<String, Long> = emptyMap(),
     onPlayFolder: (List<MediaItemModel>, MediaItemModel) -> Unit = { _, _ -> },
     onBackupSave: () -> Unit = {},
+    onMoveAsk: (List<MediaItemModel>) -> Unit = {},
+    onRenameFolderAsk: (String, List<MediaItemModel>) -> Unit = { _, _ -> },
+    onDeleteFolderAsk: (String, List<MediaItemModel>) -> Unit = { _, _ -> },
     onBackupRestore: () -> Unit = {},
     backupStatus: String? = null,
     onDeletePlaylist: (Long) -> Unit = {},
@@ -205,6 +208,9 @@ fun TopMenuDrawer(
                 onDeleteSelectedAsk = onDeleteSelectedAsk,
                 positions = listenPositions,
                 onPlayFolder = onPlayFolder,
+                onMoveAsk = onMoveAsk,
+                onRenameFolderAsk = onRenameFolderAsk,
+                onDeleteFolderAsk = onDeleteFolderAsk,
             )
             TopPage.PLAYLISTS -> PlaylistsPage(
                 playlists = playlists.filter {
@@ -304,6 +310,9 @@ private fun ColumnScope.LibraryPage(
     onDeleteSelectedAsk: () -> Unit,
     positions: Map<String, Long> = emptyMap(),
     onPlayFolder: (List<MediaItemModel>, MediaItemModel) -> Unit = { _, i -> onPlayItem(i) },
+    onMoveAsk: (List<MediaItemModel>) -> Unit = {},
+    onRenameFolderAsk: (String, List<MediaItemModel>) -> Unit = { _, _ -> },
+    onDeleteFolderAsk: (String, List<MediaItemModel>) -> Unit = { _, _ -> },
 ) {
     var folderMode by remember { mutableStateOf(false) }
     var openFolder by remember { mutableStateOf<String?>(null) }
@@ -348,7 +357,21 @@ private fun ColumnScope.LibraryPage(
         }
     }
     if (folderMode) {
-        FolderBrowser(items, openFolder, positions, onOpen = { openFolder = it }, onPlay = onPlayFolder)
+        FolderBrowser(
+            items, openFolder, positions, onOpen = { openFolder = it }, onPlay = onPlayFolder,
+            fileMenu = { item, close ->
+                androidx.compose.material3.DropdownMenuItem(text = { Text(L.t("افزودن به پلی‌لیست")) }, onClick = { close(); onAddItemToPlaylistAsk(item) })
+                androidx.compose.material3.DropdownMenuItem(text = { Text(L.t("اشتراک‌گذاری")) }, onClick = { close(); onShareItem(item) })
+                androidx.compose.material3.DropdownMenuItem(text = { Text(L.t("تغییر نام")) }, onClick = { close(); onRenameItemAsk(item) })
+                androidx.compose.material3.DropdownMenuItem(text = { Text(L.t("انتقال به پوشهٔ دیگر")) }, onClick = { close(); onMoveAsk(listOf(item)) })
+                androidx.compose.material3.DropdownMenuItem(text = { Text(L.t("حذف از دستگاه"), color = Color(0xFFE57373)) }, onClick = { close(); onDeleteItemAsk(item) })
+            },
+            folderMenu = { name, files, close ->
+                androidx.compose.material3.DropdownMenuItem(text = { Text(L.t("انتقال همهٔ فایل‌ها")) }, onClick = { close(); onMoveAsk(files) })
+                androidx.compose.material3.DropdownMenuItem(text = { Text(L.t("تغییر نام پوشه")) }, onClick = { close(); onRenameFolderAsk(name, files) })
+                androidx.compose.material3.DropdownMenuItem(text = { Text(L.t("حذف پوشه از دستگاه"), color = Color(0xFFE57373)) }, onClick = { close(); onDeleteFolderAsk(name, files) })
+            },
+        )
         return
     }
     Spacer(Modifier.height(6.dp))
@@ -800,6 +823,8 @@ private fun ColumnScope.FolderBrowser(
     positions: Map<String, Long>,
     onOpen: (String?) -> Unit,
     onPlay: (List<MediaItemModel>, MediaItemModel) -> Unit,
+    fileMenu: @Composable (MediaItemModel, () -> Unit) -> Unit,
+    folderMenu: @Composable (String, List<MediaItemModel>, () -> Unit) -> Unit,
 ) {
     val c = MhjTheme.colors
     val folders = remember(items) {
@@ -815,7 +840,18 @@ private fun ColumnScope.FolderBrowser(
         ) {
             items(folders.keys.toList(), key = { it }) { name ->
                 val n = folders[name]?.size ?: 0
-                FeatureRow(Icons.Outlined.Folder, name, L.pick("${Fa.num(n)} فایل", "$n files"), Modifier.height(68.dp), onClick = { onOpen(name) }) { Chevron() }
+                var menu by remember { mutableStateOf(false) }
+                FeatureRow(Icons.Outlined.Folder, name, L.pick("${Fa.num(n)} فایل", "$n files"), Modifier.height(68.dp), onClick = { onOpen(name) }) {
+                    Box {
+                        Icon(
+                            Icons.Outlined.MoreVert, L.t("بیشتر"), tint = MhjColors.Gold,
+                            modifier = Modifier.clip(CircleShape).clickable { menu = true }.padding(8.dp).size(22.dp),
+                        )
+                        androidx.compose.material3.DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            folderMenu(name, folders[name].orEmpty()) { menu = false }
+                        }
+                    }
+                }
             }
         }
         return
@@ -851,7 +887,18 @@ private fun ColumnScope.FolderBrowser(
                 (if (item.durationMs > 0) Fa.time(item.durationMs) else artistLabel(item.artist)) + extra,
                 Modifier.height(68.dp),
                 onClick = { onPlay(files, item) },
-            )
+            ) {
+                var menu by remember { mutableStateOf(false) }
+                Box {
+                    Icon(
+                        Icons.Outlined.MoreVert, L.t("بیشتر"), tint = MhjColors.Gold,
+                        modifier = Modifier.clip(CircleShape).clickable { menu = true }.padding(8.dp).size(22.dp),
+                    )
+                    androidx.compose.material3.DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        fileMenu(item) { menu = false }
+                    }
+                }
+            }
         }
     }
 }

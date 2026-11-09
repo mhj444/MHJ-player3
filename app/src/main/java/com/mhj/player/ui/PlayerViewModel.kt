@@ -191,6 +191,12 @@ class PlayerViewModel(
 
     fun deleteBookmark(id: Long) = ListenMemory.removeBookmark(id)
 
+    /** Remembers the subtitle for this video and shows it now. */
+    fun attachSubtitle(mediaId: String, path: String, mime: String) {
+        ListenMemory.setSubtitle(mediaId, path, mime)
+        playback.attachSubtitle(path, mime)
+    }
+
     /** Opens the bookmark's file (from the library) at its moment. */
     fun openBookmark(b: Bookmark): Boolean {
         if (playerState.value.current?.id == b.mediaId) {
@@ -377,7 +383,12 @@ class PlayerViewModel(
                 val keep = scanned.map { it.id }.toSet()
                 val stale = allLibraryItems.value.map { it.id }
                     .ifEmpty { library.observeMedia().first().map { it.id } }
-                    .filter { (it.startsWith("music_") || it.startsWith("video_")) && it !in keep }
+                    // Only kinds the scan could actually see (e.g. no video permission → leave videos alone).
+                    .filter { id ->
+                        val kindSeen = (id.startsWith("music_") && scanned.any { it.id.startsWith("music_") }) ||
+                            (id.startsWith("video_") && scanned.any { it.id.startsWith("video_") })
+                        kindSeen && id !in keep
+                    }
                 if (stale.isNotEmpty() && scanned.isNotEmpty()) library.deleteMedia(stale)
                 if (scanned.isNotEmpty()) library.upsertMedia(scanned)
                 library.refreshSmartPlaylists()
