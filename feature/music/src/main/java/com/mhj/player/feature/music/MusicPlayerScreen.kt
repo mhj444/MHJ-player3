@@ -66,8 +66,6 @@ fun MusicPlayerScreen(
     onOpenTopMenu: () -> Unit,
     onCast: () -> Unit = {},
     onOpenBottomMenu: () -> Unit = {},
-    isFavorite: Boolean = false,
-    onToggleFavorite: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val c = MhjTheme.colors
@@ -101,9 +99,6 @@ fun MusicPlayerScreen(
                     onShuffle = onShuffle,
                     onRepeat = onRepeat,
                     onCast = onCast,
-                    onOpenBottomMenu = onOpenBottomMenu,
-                    isFavorite = isFavorite,
-                    onToggleFavorite = onToggleFavorite,
                 )
             } else {
                 PortraitMusicContent(
@@ -121,9 +116,6 @@ fun MusicPlayerScreen(
                     onShuffle = onShuffle,
                     onRepeat = onRepeat,
                     onCast = onCast,
-                    onOpenBottomMenu = onOpenBottomMenu,
-                    isFavorite = isFavorite,
-                    onToggleFavorite = onToggleFavorite,
                 )
             }
         }
@@ -146,9 +138,6 @@ private fun ColumnScope.PortraitMusicContent(
     onShuffle: () -> Unit,
     onRepeat: () -> Unit,
     onCast: () -> Unit,
-    onOpenBottomMenu: () -> Unit,
-    isFavorite: Boolean,
-    onToggleFavorite: () -> Unit,
 ) {
     val c = MhjTheme.colors
     Spacer(Modifier.height(4.dp))
@@ -284,12 +273,6 @@ private fun ColumnScope.PortraitMusicContent(
         }
 
         Spacer(Modifier.weight(1f))
-        MainEqFavoriteRow(
-            dark = dark,
-            isFavorite = isFavorite,
-            onOpenEq = onOpenBottomMenu,
-            onToggleFavorite = onToggleFavorite,
-        )
         SheetPullHandle(dark = dark)
 }
 
@@ -309,9 +292,6 @@ private fun ColumnScope.LandscapeMusicContent(
     onShuffle: () -> Unit,
     onRepeat: () -> Unit,
     onCast: () -> Unit,
-    onOpenBottomMenu: () -> Unit,
-    isFavorite: Boolean,
-    onToggleFavorite: () -> Unit,
 ) {
     val c = MhjTheme.colors
     Row(
@@ -366,63 +346,7 @@ private fun ColumnScope.LandscapeMusicContent(
                 PorcelainTransport(state, onPlayPause, onPrevious, onNext, onShuffle, onRepeat)
             }
             Spacer(Modifier.height(4.dp))
-            MainEqFavoriteRow(
-                dark = dark,
-                isFavorite = isFavorite,
-                onOpenEq = onOpenBottomMenu,
-                onToggleFavorite = onToggleFavorite,
-            )
             SheetPullHandle(dark = dark)
-        }
-    }
-}
-
-/** Equalizer control + heart immediately to its right on the main now-playing screen. */
-@Composable
-private fun MainEqFavoriteRow(
-    dark: Boolean,
-    isFavorite: Boolean,
-    onOpenEq: () -> Unit,
-    onToggleFavorite: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 4.dp),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        EmbossCircle(onClick = onOpenEq, diameter = 48.dp, ringGold = true) {
-            Image(
-                painter = painterResource(
-                    if (dark) R.drawable.icon_mid_equalizer else R.drawable.icon_porc_equalizer,
-                ),
-                contentDescription = "Equalizer",
-                modifier = Modifier.size(22.dp),
-                contentScale = ContentScale.Fit,
-            )
-        }
-        Spacer(Modifier.width(14.dp))
-        Box(
-            modifier = Modifier
-                .size(48.dp)
-                .clip(CircleShape)
-                .background(if (dark) Color(0xFF1A1612) else Color(0xFFF3EADF))
-                .border(
-                    width = 1.4.dp,
-                    brush = Brush.linearGradient(
-                        listOf(MhjColors.GoldHi.copy(alpha = 0.9f), MhjColors.GoldLo.copy(alpha = 0.75f)),
-                    ),
-                    shape = CircleShape,
-                )
-                .clickable(onClick = onToggleFavorite),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                if (isFavorite) "♥" else "♡",
-                color = if (isFavorite) Color(0xFFE53935) else MhjColors.GoldHi,
-                fontSize = 24.sp,
-            )
         }
     }
 }

@@ -134,7 +134,6 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
     val selectionMode by viewModel.selectionMode.collectAsStateWithLifecycle()
     val scanning by viewModel.scanning.collectAsStateWithLifecycle()
     val transcript by viewModel.transcriptState.collectAsStateWithLifecycle()
-    val isFavorite by viewModel.isCurrentFavorite.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
     val landscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -311,14 +310,6 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
                         onOpenBottomMenu = {
                             if (onMusicPage) bottomOpen = true
                         },
-                        isFavorite = isFavorite,
-                        onToggleFavorite = {
-                            if (playerState.current == null) {
-                                Toast.makeText(context, "رسانه‌ای در حال پخش نیست", Toast.LENGTH_SHORT).show()
-                            } else {
-                                viewModel.toggleFavoriteCurrent()
-                            }
-                        },
                     )
                 }
             }
@@ -402,7 +393,6 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
                     transcriptProgress = transcript.progress,
                     transcriptStatusFa = transcript.statusFa,
                     transcriptErrorFa = transcript.errorFa,
-                    isFavorite = isFavorite,
                     onDismiss = { bottomOpen = false },
                     onToggleTranscript = {
                         if (playerState.current == null) {
@@ -459,13 +449,6 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
                     },
                     onEqBandChange = viewModel::setEqBand,
                     onEqPreset = viewModel::applyEqPreset,
-                    onToggleFavorite = {
-                        if (playerState.current == null) {
-                            Toast.makeText(context, "رسانه‌ای در حال پخش نیست", Toast.LENGTH_SHORT).show()
-                        } else {
-                            viewModel.toggleFavoriteCurrent()
-                        }
-                    },
                     onTimerChange = viewModel::setSleepTimerMinutes,
                     hazeState = hazeState,
                 )

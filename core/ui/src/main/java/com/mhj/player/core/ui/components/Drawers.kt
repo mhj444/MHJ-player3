@@ -262,7 +262,6 @@ fun BottomAudioDrawer(
     transcriptProgress: Float = 0f,
     transcriptStatusFa: String = "تبدیل گفتار رسانه به متن",
     transcriptErrorFa: String? = null,
-    isFavorite: Boolean = false,
     onDismiss: () -> Unit,
     onToggleTranscript: () -> Unit = {},
     onOpenTranscriptFolder: () -> Unit = {},
@@ -274,7 +273,6 @@ fun BottomAudioDrawer(
     onEnsureEqualizer: () -> Unit = {},
     onEqBandChange: (Int, Float) -> Unit = { _, _ -> },
     onEqPreset: (String) -> Unit = {},
-    onToggleFavorite: () -> Unit = {},
     onTimerChange: (Int) -> Unit,
     modifier: Modifier = Modifier,
     hazeState: HazeState? = null,
@@ -364,11 +362,7 @@ fun BottomAudioDrawer(
                     ) { page = AudioPage.SPEED }
                 }
                 Spacer(Modifier.height(12.dp))
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     OfficialGridTile(
                         Modifier.weight(1f),
                         if (dark) R.drawable.icon_mid_equalizer else R.drawable.icon_porc_equalizer,
@@ -378,10 +372,6 @@ fun BottomAudioDrawer(
                         onEnsureEqualizer()
                         page = AudioPage.EQUALIZER
                     }
-                    FavoriteHeartButton(
-                        favorited = isFavorite,
-                        onClick = onToggleFavorite,
-                    )
                     OfficialGridTile(
                         Modifier.weight(1f),
                         if (dark) R.drawable.icon_mid_timer else R.drawable.icon_porc_timer,
@@ -409,29 +399,6 @@ fun BottomAudioDrawer(
                 onOpenSystemEq = onOpenSystemEq,
             )
         }
-    }
-}
-
-@Composable
-private fun FavoriteHeartButton(
-    favorited: Boolean,
-    onClick: () -> Unit,
-) {
-    Box(
-        modifier = Modifier
-            .size(56.dp)
-            .softEmboss(16.dp, MhjTheme.colors.lightShadow, MhjTheme.colors.darkShadow, 8.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(MhjTheme.colors.elevated)
-            .softGoldHairline(16.dp)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            if (favorited) "♥" else "♡",
-            color = if (favorited) Color(0xFFE53935) else MhjColors.GoldHi,
-            fontSize = 28.sp,
-        )
     }
 }
 
