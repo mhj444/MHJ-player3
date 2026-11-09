@@ -2,8 +2,10 @@ package com.mhj.player.core.playback.engine
 
 import android.content.ComponentName
 import android.content.Context
+import android.util.Log
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
@@ -49,11 +51,28 @@ class PlaybackController(
             publish(player)
         }
 
-        override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+        override fun onPlayerError(error: PlaybackException) {
+            Log.e(
+                TAG,
+                "player error code=${error.errorCode} name=${error.errorCodeName} " +
+                    "msg=${error.message} cause=${error.cause}",
+                error,
+            )
             _state.value = _state.value.copy(
-                errorMessage = error.message ?: "Playback error",
+                errorMessage = error.message ?: error.errorCodeName,
                 isPlaying = false,
             )
+        }
+
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            val name = when (playbackState) {
+                Player.STATE_IDLE -> "IDLE"
+                Player.STATE_BUFFERING -> "BUFFERING"
+                Player.STATE_READY -> "READY"
+                Player.STATE_ENDED -> "ENDED"
+                else -> "UNKNOWN($playbackState)"
+            }
+            Log.i(TAG, "playbackState=$name playing=${controller?.isPlaying} session=${audioSessionId()}")
         }
     }
 
@@ -93,9 +112,17 @@ class PlaybackController(
     }
 
     fun play(items: List<MediaItemModel>, startIndex: Int = 0) {
-        val c = controller ?: return
-        if (items.isEmpty()) return
-        c.setMediaItems(items.map { it.toMediaItem() }, startIndex, 0L)
+        val c = controller ?: run {
+            Log.e(TAG, "play() ignored — MediaController not connected")
+            return
+        }
+        if (items.isEmpty()) {
+            Log.e(TAG, "play() ignored — empty queue")
+            return
+        }
+        val start = startIndex.coerceIn(0, items.lastIndex)
+        Log.i(TAG, "play index=$start title=${items[start].title} uri=${items[start].uri}")
+        c.setMediaItems(items.map { it.toMediaItem() }, start, 0L)
         c.prepare()
         c.play()
     }
@@ -273,6 +300,10 @@ class PlaybackController(
             abPointAMs = abPointAMs,
             abPointBMs = abPointBMs,
         )
+    }
+
+    companion object {
+        private const val TAG = "Playback"
     }
 
     private fun formatMs(ms: Long): String {

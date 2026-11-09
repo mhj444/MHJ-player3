@@ -219,13 +219,17 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
         }
     }
 
-    LaunchedEffect(playerState.audioSessionId) {
-        if (playerState.audioSessionId > 0) {
+    LaunchedEffect(playerState.audioSessionId, playerState.isPlaying, playerState.isBuffering) {
+        // Rebind after the track is actually playing — do not broadcast OPEN_SESSION
+        // on every session change (that was stealing the session from ExoPlayer).
+        if (playerState.audioSessionId > 0 && playerState.isPlaying && !playerState.isBuffering) {
             viewModel.rebindAudioEffects()
-            viewModel.advertiseAudioSession(context.packageName)?.let { open ->
-                runCatching { context.sendBroadcast(open) }
-            }
         }
+    }
+
+    LaunchedEffect(playerState.errorMessage) {
+        val err = playerState.errorMessage ?: return@LaunchedEffect
+        Toast.makeText(context, "پخش ناموفق: $err", Toast.LENGTH_LONG).show()
     }
 
     // Leaving music page always dismisses the music audio sheet
@@ -306,6 +310,14 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
                         onCast = { CastHelper.openCastChooser(context) },
                         onOpenBottomMenu = {
                             if (onMusicPage) bottomOpen = true
+                        },
+                        isFavorite = isFavorite,
+                        onToggleFavorite = {
+                            if (playerState.current == null) {
+                                Toast.makeText(context, "رسانه‌ای در حال پخش نیست", Toast.LENGTH_SHORT).show()
+                            } else {
+                                viewModel.toggleFavoriteCurrent()
+                            }
                         },
                     )
                 }
@@ -415,6 +427,7 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
                         val msg = viewModel.tapAbLoop()
                         Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                     },
+                    onEnsureEqualizer = viewModel::ensureEqualizerAttached,
                     onOpenSystemEq = {
                         scope.launch {
                             viewModel.ensureAudioSession()

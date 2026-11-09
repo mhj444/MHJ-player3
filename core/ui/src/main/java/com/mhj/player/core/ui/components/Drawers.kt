@@ -271,6 +271,7 @@ fun BottomAudioDrawer(
     onSpeedNudge: (Float) -> Unit,
     onAbClick: () -> Unit = {},
     onOpenSystemEq: () -> Unit = {},
+    onEnsureEqualizer: () -> Unit = {},
     onEqBandChange: (Int, Float) -> Unit = { _, _ -> },
     onEqPreset: (String) -> Unit = {},
     onToggleFavorite: () -> Unit = {},
@@ -373,7 +374,10 @@ fun BottomAudioDrawer(
                         if (dark) R.drawable.icon_mid_equalizer else R.drawable.icon_porc_equalizer,
                         "Equalizer",
                         "Bands",
-                    ) { page = AudioPage.EQUALIZER }
+                    ) {
+                        onEnsureEqualizer()
+                        page = AudioPage.EQUALIZER
+                    }
                     FavoriteHeartButton(
                         favorited = isFavorite,
                         onClick = onToggleFavorite,
@@ -889,8 +893,13 @@ private fun ColumnScope.PlaylistDetailPage(
     val id = playlist?.id ?: return
     val canReorder = playlist?.isSmart != true
     var order by remember(playlist?.id) { mutableStateOf(tracks.map { it.id }) }
-    LaunchedEffect(tracks.map { it.id }) {
-        if (order.toSet() != tracks.map { it.id }.toSet() || order.size != tracks.size) {
+    var draggingIndex by remember { mutableIntStateOf(-1) }
+    var dragOffsetY by remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(tracks.map { it.id }, draggingIndex) {
+        // Don't clobber mid-drag; only sync when membership changes
+        if (draggingIndex < 0 &&
+            (order.toSet() != tracks.map { it.id }.toSet() || order.size != tracks.size)
+        ) {
             order = tracks.map { it.id }
         }
     }
@@ -898,10 +907,8 @@ private fun ColumnScope.PlaylistDetailPage(
         val map = tracks.associateBy { it.id }
         order.mapNotNull { map[it] }
     }
-    var draggingIndex by remember { mutableIntStateOf(-1) }
-    var dragOffsetY by remember { mutableFloatStateOf(0f) }
     val density = LocalDensity.current
-    val rowHeightPx = with(density) { 58.dp.toPx() }
+    val rowHeightPx = with(density) { 64.dp.toPx() }
 
     PageHeader(
         playlist?.name ?: "Playlist",
@@ -911,7 +918,7 @@ private fun ColumnScope.PlaylistDetailPage(
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         ActionChip("Play all") { onPlayAll(id) }
         if (canReorder) {
-            Text("Long-press & drag to reorder", color = MhjTheme.colors.muted, fontSize = 11.sp)
+            Text("Long-press ☰ and drag", color = MhjTheme.colors.muted, fontSize = 11.sp)
         }
     }
     Spacer(Modifier.height(8.dp))
@@ -922,6 +929,7 @@ private fun ColumnScope.PlaylistDetailPage(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f, fill = true),
+            userScrollEnabled = draggingIndex < 0,
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             itemsIndexed(orderedTracks, key = { _, t -> t.id }) { index, item ->
@@ -930,45 +938,54 @@ private fun ColumnScope.PlaylistDetailPage(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .zIndex(if (dragging) 2f else 0f)
+                        .zIndex(if (dragging) 4f else 0f)
                         .graphicsLayer {
                             if (dragging) {
                                 translationY = dragOffsetY
-                                scaleX = 1.04f
-                                scaleY = 1.04f
-                                shadowElevation = 18f
+                                scaleX = 1.05f
+                                scaleY = 1.05f
+                                shadowElevation = 24f
+                                alpha = 0.97f
                             }
                         }
-                        .then(
-                            if (dragging) {
-                                Modifier.shadow(10.dp, RoundedCornerShape(14.dp), ambientColor = MhjColors.Gold)
-                            } else {
-                                Modifier
-                            },
+                        .shadow(
+                            elevation = if (dragging) 12.dp else 0.dp,
+                            shape = RoundedCornerShape(14.dp),
+                            ambientColor = MhjColors.Gold.copy(alpha = 0.55f),
+                            spotColor = MhjColors.Gold.copy(alpha = 0.45f),
                         )
                         .clip(RoundedCornerShape(14.dp))
                         .background(if (dragging) MhjTheme.colors.controlFill else MhjTheme.colors.elevated)
                         .border(
-                            if (dragging) 1.dp else 0.dp,
-                            if (dragging) MhjColors.Gold else Color.Transparent,
-                            RoundedCornerShape(14.dp),
+                            width = if (dragging) 1.5.dp else 0.dp,
+                            color = if (dragging) MhjColors.Gold else Color.Transparent,
+                            shape = RoundedCornerShape(14.dp),
                         )
-                        .then(
-                            if (canReorder) {
-                                Modifier.pointerInput(order, index) {
+                        .padding(horizontal = 10.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (canReorder) {
+                        // Dedicated drag handle — long-press here lifts the row (avoids clickable conflict)
+                        Text(
+                            "☰",
+                            color = MhjColors.GoldHi,
+                            fontSize = 20.sp,
+                            modifier = Modifier
+                                .pointerInput(order, index, rowHeightPx) {
                                     detectDragGesturesAfterLongPress(
                                         onDragStart = {
                                             draggingIndex = index
                                             dragOffsetY = 0f
                                         },
                                         onDragCancel = {
+                                            if (draggingIndex >= 0) onReorder(id, order)
                                             draggingIndex = -1
                                             dragOffsetY = 0f
                                         },
                                         onDragEnd = {
+                                            onReorder(id, order)
                                             draggingIndex = -1
                                             dragOffsetY = 0f
-                                            onReorder(id, order)
                                         },
                                         onDrag = { change, dragAmount ->
                                             change.consume()
@@ -976,8 +993,8 @@ private fun ColumnScope.PlaylistDetailPage(
                                             val from = draggingIndex
                                             if (from < 0) return@detectDragGesturesAfterLongPress
                                             val shift = when {
-                                                dragOffsetY > rowHeightPx * 0.55f -> 1
-                                                dragOffsetY < -rowHeightPx * 0.55f -> -1
+                                                dragOffsetY > rowHeightPx * 0.5f -> 1
+                                                dragOffsetY < -rowHeightPx * 0.5f -> -1
                                                 else -> 0
                                             }
                                             if (shift != 0) {
@@ -994,19 +1011,15 @@ private fun ColumnScope.PlaylistDetailPage(
                                         },
                                     )
                                 }
-                            } else {
-                                Modifier
-                            },
+                                .padding(horizontal = 6.dp, vertical = 8.dp),
                         )
-                        .clickable(enabled = !dragging) { onPlayItem(item) }
-                        .padding(horizontal = 10.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    if (canReorder) {
-                        Text("☰", color = MhjColors.Gold.copy(alpha = 0.7f), fontSize = 16.sp)
                         Spacer(Modifier.width(8.dp))
                     }
-                    Column(Modifier.weight(1f)) {
+                    Column(
+                        Modifier
+                            .weight(1f)
+                            .clickable(enabled = !dragging) { onPlayItem(item) },
+                    ) {
                         Text(item.title, color = MhjTheme.colors.onBackground, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(item.artist, color = MhjTheme.colors.muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
