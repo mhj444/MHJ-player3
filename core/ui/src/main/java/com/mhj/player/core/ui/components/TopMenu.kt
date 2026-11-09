@@ -147,7 +147,7 @@ fun TopMenuDrawer(
                 Spacer(Modifier.height(16.dp))
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 4.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     FeatureRow(Icons.Outlined.LibraryMusic, "کتابخانه", "همهٔ آهنگ‌ها و ویدیوهای گوشی", onClick = { page = TopPage.LIBRARY }) { Chevron() }
-                    FeatureRow(Icons.Outlined.QueueMusic, "پلی‌لیست‌ها", "فهرست‌های خودتان و فهرست‌های خودکار", onClick = { page = TopPage.PLAYLISTS }) { Chevron() }
+                    FeatureRow(Icons.AutoMirrored.Outlined.QueueMusic, "پلی‌لیست‌ها", "فهرست‌های خودتان و فهرست‌های خودکار", onClick = { page = TopPage.PLAYLISTS }) { Chevron() }
                     FeatureRow(Icons.Outlined.FavoriteBorder, "علاقه‌مندی‌ها", "آهنگ‌هایی که قلب زده‌اید", onClick = {
                         playlistReturn = TopPage.ROOT
                         onOpenFavorites()
@@ -213,10 +213,10 @@ fun TopMenuDrawer(
                 Spacer(Modifier.height(8.dp))
                 Column(Modifier.padding(horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     FeatureRow(Icons.Outlined.DarkMode, "شب طلایی", "زمینهٔ تیره با طلایی", onClick = { if (settings.theme != AppTheme.MIDNIGHT_GOLD) onToggleTheme() }) {
-                        GoldSwitch(settings.theme == AppTheme.MIDNIGHT_GOLD) { if (settings.theme != AppTheme.MIDNIGHT_GOLD) onToggleTheme() }
+                        GoldSwitch(settings.theme == AppTheme.MIDNIGHT_GOLD, onChange = { if (settings.theme != AppTheme.MIDNIGHT_GOLD) onToggleTheme() })
                     }
                     FeatureRow(Icons.Outlined.LightMode, "سفید چینی", "زمینهٔ روشن کرم با طلایی", onClick = { if (settings.theme != AppTheme.PORCELAIN_WHITE) onToggleTheme() }) {
-                        GoldSwitch(settings.theme == AppTheme.PORCELAIN_WHITE) { if (settings.theme != AppTheme.PORCELAIN_WHITE) onToggleTheme() }
+                        GoldSwitch(settings.theme == AppTheme.PORCELAIN_WHITE, onChange = { if (settings.theme != AppTheme.PORCELAIN_WHITE) onToggleTheme() })
                     }
                 }
             }
@@ -224,7 +224,6 @@ fun TopMenuDrawer(
     }
 }
 
-@Composable
 @Composable
 private fun ColumnScope.LibraryPage(
     items: List<MediaItemModel>,
@@ -485,7 +484,7 @@ private fun ColumnScope.PlaylistsPage(
         ) {
             items(playlists, key = { it.id }) { playlist ->
                 FeatureRow(
-                    if (playlist.isSmart) Icons.Outlined.AutoAwesome else Icons.Outlined.QueueMusic,
+                    if (playlist.isSmart) Icons.Outlined.AutoAwesome else Icons.AutoMirrored.Outlined.QueueMusic,
                     playlistTitle(playlist),
                     if (playlist.isSmart) "خودکار" else "پلی‌لیست شما",
                     Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
