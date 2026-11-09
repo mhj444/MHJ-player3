@@ -66,7 +66,7 @@ class TranscriptionController(
                     isRunning = true,
                     isDownloading = !models.isModelReady(),
                     progress = 0f,
-                    statusFa = if (models.isModelReady()) "در حال تبدیل به متن…" else "در حال دانلود مدل گفتار…",
+                    statusFa = if (models.isModelReady()) "در حال تبدیل به متن…" else "در حال دانلود مدل فارسی…",
                     activeMediaId = mediaId,
                 )
                 val modelDir = try {
@@ -81,8 +81,8 @@ class TranscriptionController(
                 } catch (t: Throwable) {
                     val msg = when {
                         t.message == "offline" || !models.isOnline() ->
-                            "آفلاین هستید و مدل گفتار هنوز دانلود نشده است."
-                        else -> "دانلود مدل گفتار ناموفق بود."
+                            "آفلاین هستید و مدل فارسی هنوز دانلود نشده است."
+                        else -> "دانلود مدل فارسی ناموفق بود."
                     }
                     _state.value = TranscriptionUiState(
                         isRunning = false,
