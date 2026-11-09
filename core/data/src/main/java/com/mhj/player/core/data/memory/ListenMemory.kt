@@ -70,7 +70,8 @@ object ListenMemory {
     // ---------------------------------------------------------------- bookmarks
 
     fun addBookmark(mediaId: String, title: String, positionMs: Long): Bookmark {
-        val b = Bookmark(System.currentTimeMillis(), mediaId, title, positionMs.coerceAtLeast(0), System.currentTimeMillis())
+        val id = maxOf(System.currentTimeMillis(), (_bookmarks.value.maxOfOrNull { it.id } ?: 0L) + 1)
+        val b = Bookmark(id, mediaId, title, positionMs.coerceAtLeast(0), System.currentTimeMillis())
         _bookmarks.value = (listOf(b) + _bookmarks.value)
         saveBookmarks()
         return b
@@ -83,7 +84,9 @@ object ListenMemory {
 
     fun addBookmarks(list: List<Bookmark>) {
         val have = _bookmarks.value.map { it.mediaId to it.positionMs / 1000 }.toSet()
-        val fresh = list.filter { (it.mediaId to it.positionMs / 1000) !in have }
+        var next = (_bookmarks.value.maxOfOrNull { it.id } ?: 0L).coerceAtLeast(System.currentTimeMillis())
+        // New ids, so a restored bookmark can never share an id with one already here.
+        val fresh = list.filter { (it.mediaId to it.positionMs / 1000) !in have }.map { it.copy(id = ++next) }
         _bookmarks.value = (_bookmarks.value + fresh).sortedByDescending { it.createdAt }
         saveBookmarks()
     }
