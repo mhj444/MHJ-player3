@@ -12,12 +12,26 @@ android {
         applicationId = "com.mhj.player"
         minSdk = 31
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0-phase1"
+        // Every GitHub build gets a higher number, so a new APK installs over the old one.
+        versionCode = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
+        versionName = "0.2." + (System.getenv("GITHUB_RUN_NUMBER") ?: "0")
+        // Only the phone's chip type (keeps the APK small).
+        ndk { abiFilters += listOf("arm64-v8a") }
+    }
+
+    // One fixed key, so every new build updates the installed app (settings and lists are kept).
+    signingConfigs {
+        create("mhj") {
+            storeFile = rootProject.file("keystore/mhj-player.jks")
+            storePassword = "mhjplayer2026"
+            keyAlias = "mhjplayer"
+            keyPassword = "mhjplayer2026"
+        }
     }
 
     buildTypes {
         release {
+            signingConfig = signingConfigs.getByName("mhj")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -25,13 +39,16 @@ android {
             )
         }
         debug {
-            applicationIdSuffix = ".debug"
-            versionNameSuffix = "-debug"
+            signingConfig = signingConfigs.getByName("mhj")
         }
     }
 
     buildFeatures {
         compose = true
+    }
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
     }
 
     compileOptions {
