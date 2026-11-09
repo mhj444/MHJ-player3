@@ -70,7 +70,7 @@ import java.util.Date
 import java.util.Locale
 
 /** One saved transcript in the list. [id] is whatever the app needs to find it again. */
-data class SavedTranscript(val id: String, val title: String, val updatedAt: Long)
+data class SavedTranscript(val id: String, val title: String, val updatedAt: Long, val running: Boolean = false)
 
 private enum class AudioPage { ROOT, SPEED, TIMER, EQUALIZER, HISTORY }
 
@@ -115,10 +115,11 @@ fun BottomAudioDrawer(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     hazeState: HazeState? = null,
+    backEnabled: Boolean = true,
 ) {
     var page by remember { mutableStateOf(AudioPage.ROOT) }
     LaunchedEffect(visible) { if (!visible) page = AudioPage.ROOT else actions.onRefreshSaved() }
-    BackHandler(enabled = visible) { if (page != AudioPage.ROOT) page = AudioPage.ROOT else onDismiss() }
+    BackHandler(enabled = visible && backEnabled) { if (page != AudioPage.ROOT) page = AudioPage.ROOT else onDismiss() }
 
     // A clock for the timer's countdown.
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -419,7 +420,10 @@ private fun ColumnScope.HistoryPage(saved: List<SavedTranscript>, a: AudioAction
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(item.title, color = c.onBackground, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(Fa.digits(fmt.format(Date(item.updatedAt))), color = c.muted, fontSize = 12.sp)
+                        Text(
+                            if (item.running) "در حال نوشتن…" else Fa.digits(fmt.format(Date(item.updatedAt))),
+                            color = if (item.running) MhjColors.Gold else c.muted, fontSize = 12.sp,
+                        )
                     }
                     RaisedIconButton(Icons.Outlined.Share, "اشتراک", { a.onShareSaved(item) }, size = 40.dp, iconSize = 19.dp)
                     Spacer(Modifier.width(10.dp))

@@ -57,8 +57,25 @@ class PlayerViewModel(
     val allLibraryItems: StateFlow<List<MediaItemModel>> = library.observeMedia()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    val playlists: StateFlow<List<PlaylistModel>> = library.observePlaylists()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    /** Built-in lists first, then your own in the order you dragged them into. */
+    val playlists: StateFlow<List<PlaylistModel>> = combine(library.observePlaylists(), settingsStore.playlistOrder) { list, order ->
+        val pos = order.withIndex().associate { (i, id) -> id to i }
+        val (smart, mine) = list.partition { it.isSmart }
+        smart + mine.sortedWith(compareBy<PlaylistModel> { pos[it.id] ?: Int.MAX_VALUE }.thenByDescending { it.createdAt })
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    fun renamePlaylist(id: Long, name: String) {
+        val n = name.trim().ifEmpty { return }
+        viewModelScope.launch { library.renamePlaylist(id, n) }
+    }
+
+    fun deletePlaylist(id: Long) {
+        viewModelScope.launch { library.deletePlaylist(id) }
+    }
+
+    fun reorderPlaylists(ids: List<Long>) {
+        viewModelScope.launch { settingsStore.setPlaylistOrder(ids) }
+    }
 
     private val activePlaylistId = MutableStateFlow<Long?>(null)
 
@@ -339,8 +356,9 @@ class PlayerViewModel(
     }
 
     fun scanDeviceLibrary() {
+        if (_scanning.value) return
+        _scanning.value = true
         viewModelScope.launch {
-            _scanning.value = true
             runCatching {
                 val scanned = scanner.scanMediaStore()
                 // Drop phone files that are gone (or are no longer counted as media).

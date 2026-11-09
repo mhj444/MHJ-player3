@@ -84,6 +84,13 @@ class LibraryRepository(
         }
     }
 
+    suspend fun renamePlaylist(id: Long, name: String) = playlistDao.rename(id, name)
+
+    suspend fun deletePlaylist(id: Long) {
+        playlistDao.clearEntries(id)
+        playlistDao.delete(id)
+    }
+
     suspend fun removeFromPlaylist(playlistId: Long, mediaId: String) {
         playlistDao.removeEntry(playlistId, mediaId)
     }

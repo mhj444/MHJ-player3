@@ -114,6 +114,10 @@ fun TopMenuDrawer(
     onAddSelectedToPlaylist: () -> Unit = {},
     onDeleteSelectedAsk: () -> Unit = {},
     onOpenFavorites: () -> Unit = {},
+    onRenamePlaylist: (Long, String) -> Unit = { _, _ -> },
+    onDeletePlaylist: (Long) -> Unit = {},
+    onReorderPlaylists: (List<Long>) -> Unit = {},
+    backEnabled: Boolean = true,
     modifier: Modifier = Modifier,
     hazeState: HazeState? = null,
 ) {
@@ -126,7 +130,7 @@ fun TopMenuDrawer(
         }
     }
 
-    BackHandler(enabled = visible) {
+    BackHandler(enabled = visible && backEnabled) {
         when {
             selectionMode -> onClearSelection()
             page == TopPage.ROOT -> onDismiss()
@@ -194,6 +198,9 @@ fun TopMenuDrawer(
                     onOpenPlaylist(id)
                     page = TopPage.PLAYLIST_DETAIL
                 },
+                onRename = onRenamePlaylist,
+                onDelete = onDeletePlaylist,
+                onReorder = onReorderPlaylists,
             )
             TopPage.FAVORITES -> {
                 // Favorites opens PLAYLIST_DETAIL via onOpenFavorites from ROOT
@@ -441,55 +448,139 @@ private fun ColumnScope.PlaylistsPage(
     onBack: () -> Unit,
     onCreatePlaylist: (String) -> Unit,
     onOpenPlaylist: (Long) -> Unit,
-    title: String = "پلی‌لیست‌ها",
-    subtitle: String = "برای ساختن، نام بنویسید و + را بزنید",
+    onRename: (Long, String) -> Unit,
+    onDelete: (Long) -> Unit,
+    onReorder: (List<Long>) -> Unit,
 ) {
+    val c = MhjTheme.colors
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     var newName by remember { mutableStateOf("") }
-    SheetTitle(title, subtitle, onBack)
-    Spacer(Modifier.height(10.dp))
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    val builtIn = playlists.filter { it.isSmart }
+    var mine by remember { mutableStateOf(playlists.filter { !it.isSmart }.map { it.id }) }
+    var draggingId by remember { mutableStateOf<Long?>(null) }
+    var moved by remember { mutableStateOf(false) }
+    var dragOffsetY by remember { mutableFloatStateOf(0f) }
+    var menuFor by remember { mutableStateOf<PlaylistModel?>(null) }
+    var renameFor by remember { mutableStateOf<PlaylistModel?>(null) }
+    var renameText by remember { mutableStateOf("") }
+    var deleteFor by remember { mutableStateOf<PlaylistModel?>(null) }
+    LaunchedEffect(playlists) { if (draggingId == null) mine = playlists.filter { !it.isSmart }.map { it.id } }
+    val byId = playlists.associateBy { it.id }
+    val rowStepPx = with(LocalDensity.current) { (68 + 12).dp.toPx() }
+
+    SheetTitle("پلی‌لیست‌ها", "برای ویرایش، حذف یا جابه‌جایی، روی پلی‌لیست انگشت نگه دارید", onBack)
+    Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         BasicTextField(
             value = newName,
             onValueChange = { newName = it },
             singleLine = true,
-            textStyle = TextStyle(color = MhjTheme.colors.onBackground, fontSize = 14.sp, fontFamily = com.mhj.player.core.ui.theme.Vazir),
+            textStyle = TextStyle(color = c.onBackground, fontSize = 14.sp, fontFamily = com.mhj.player.core.ui.theme.Vazir),
             cursorBrush = SolidColor(MhjColors.Gold),
-            modifier = Modifier
-                .weight(1f)
-                .clip(RoundedCornerShape(14.dp))
-                .background(MhjTheme.colors.controlFill)
-                .padding(horizontal = 12.dp, vertical = 12.dp),
+            modifier = Modifier.weight(1f).clip(RoundedCornerShape(14.dp)).background(c.recess).padding(horizontal = 12.dp, vertical = 13.dp),
             decorationBox = { inner ->
-                if (newName.isEmpty()) Text("نام پلی‌لیست تازه…", color = MhjTheme.colors.muted, fontSize = 13.sp)
+                if (newName.isEmpty()) Text("نام پلی‌لیست تازه…", color = c.muted, fontSize = 13.sp)
                 inner()
             },
         )
+        Spacer(Modifier.width(10.dp))
         RaisedIconButton(Icons.Outlined.Add, "ساختن", {
-            onCreatePlaylist(newName)
-            newName = ""
-        }, size = 44.dp, iconSize = 22.dp)
+            if (newName.isNotBlank()) { onCreatePlaylist(newName); newName = "" }
+        }, size = 46.dp, iconSize = 22.dp, active = newName.isNotBlank())
     }
-    Spacer(Modifier.height(10.dp))
-    if (playlists.isEmpty()) {
-        Text("هنوز پلی‌لیستی نساخته‌اید", color = MhjTheme.colors.muted, fontSize = 13.sp)
-    } else {
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f, fill = true),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 6.dp),
-        ) {
-            items(playlists, key = { it.id }) { playlist ->
-                FeatureRow(
-                    if (playlist.isSmart) Icons.Outlined.AutoAwesome else Icons.AutoMirrored.Outlined.QueueMusic,
-                    playlistTitle(playlist),
-                    if (playlist.isSmart) "خودکار" else "پلی‌لیست شما",
-                    Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
-                    onClick = { onOpenPlaylist(playlist.id) },
-                ) { Chevron() }
+    Spacer(Modifier.height(8.dp))
+    LazyColumn(
+        modifier = Modifier.fillMaxWidth().weight(1f, fill = true),
+        userScrollEnabled = draggingId == null,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp, 6.dp),
+    ) {
+        items(builtIn, key = { "s${it.id}" }) { pl ->
+            FeatureRow(Icons.Outlined.AutoAwesome, playlistTitle(pl), "خودکار", Modifier.height(68.dp), onClick = { onOpenPlaylist(pl.id) }) { Chevron() }
+        }
+        if (mine.isEmpty()) item(key = "empty") {
+            Text("هنوز پلی‌لیستی نساخته‌اید؛ نام بنویسید و + را بزنید.", color = c.muted, fontSize = 13.sp, modifier = Modifier.padding(8.dp))
+        }
+        items(mine.mapNotNull { byId[it] }, key = { it.id }) { pl ->
+            val dragging = draggingId == pl.id
+            Box(
+                Modifier
+                    .zIndex(if (dragging) 4f else 0f)
+                    .graphicsLayer { if (dragging) { translationY = dragOffsetY; scaleX = 1.04f; scaleY = 1.04f } }
+                    .tapOrHoldDrag(
+                        key = pl.id,
+                        onTap = { onOpenPlaylist(pl.id) },
+                        onHold = {
+                            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                            draggingId = pl.id; moved = false; dragOffsetY = 0f
+                        },
+                        onDrag = { dy ->
+                            dragOffsetY += dy
+                            if (kotlin.math.abs(dragOffsetY) > 12f) moved = true
+                            val cur = mine
+                            val from = cur.indexOf(pl.id)
+                            if (from >= 0) {
+                                val to = when {
+                                    dragOffsetY > rowStepPx * 0.5f && from < cur.lastIndex -> from + 1
+                                    dragOffsetY < -rowStepPx * 0.5f && from > 0 -> from - 1
+                                    else -> from
+                                }
+                                if (to != from) {
+                                    mine = cur.toMutableList().also { l -> l.add(to, l.removeAt(from)) }
+                                    dragOffsetY -= (to - from) * rowStepPx
+                                }
+                            }
+                        },
+                        onEnd = {
+                            if (moved) onReorder(mine) else menuFor = pl
+                            draggingId = null; dragOffsetY = 0f
+                        },
+                    ),
+            ) {
+                FeatureRow(Icons.AutoMirrored.Outlined.QueueMusic, pl.name, "پلی‌لیست شما", Modifier.height(68.dp)) {
+                    Box {
+                        Icon(
+                            Icons.Outlined.MoreVert, "بیشتر", tint = MhjColors.Gold,
+                            modifier = Modifier.clip(CircleShape).clickable { menuFor = pl }.padding(8.dp).size(22.dp),
+                        )
+                        androidx.compose.material3.DropdownMenu(expanded = menuFor?.id == pl.id, onDismissRequest = { menuFor = null }) {
+                            androidx.compose.material3.DropdownMenuItem(text = { Text("تغییر نام") }, onClick = {
+                                menuFor = null; renameFor = pl; renameText = pl.name
+                            })
+                            androidx.compose.material3.DropdownMenuItem(text = { Text("حذف پلی‌لیست", color = Color(0xFFE57373)) }, onClick = {
+                                menuFor = null; deleteFor = pl
+                            })
+                        }
+                    }
+                }
             }
         }
+    }
+    renameFor?.let { pl ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { renameFor = null },
+            title = { Text("تغییر نام پلی‌لیست") },
+            text = {
+                androidx.compose.material3.OutlinedTextField(renameText, { renameText = it }, singleLine = true, label = { Text("نام تازه") })
+            },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { renameFor = null }) { Text("انصراف") } },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    if (renameText.isNotBlank()) onRename(pl.id, renameText.trim())
+                    renameFor = null
+                }) { Text("ذخیره") }
+            },
+        )
+    }
+    deleteFor?.let { pl ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { deleteFor = null },
+            title = { Text("حذف پلی‌لیست") },
+            text = { Text("پلی‌لیست «${pl.name}» پاک شود؟ خود آهنگ‌ها از گوشی پاک نمی‌شوند.") },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { deleteFor = null }) { Text("انصراف") } },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { onDelete(pl.id); deleteFor = null }) { Text("حذف", color = Color(0xFFE57373)) }
+            },
+        )
     }
 }
 
@@ -567,45 +658,37 @@ private fun ColumnScope.PlaylistDetailPage(
                         brush = if (dragging) SolidColor(MhjColors.Gold) else Emboss.rim(0.3f),
                         shape = RoundedCornerShape(16.dp),
                     )
-                    // Keyed on the song only, so moving it to a new place does not cancel the drag.
-                    .then(
-                        if (!canReorder) Modifier else Modifier.pointerInput(item.id) {
-                            detectDragGesturesAfterLongPress(
-                                onDragStart = {
-                                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
-                                    draggingId = item.id
-                                    dragOffsetY = 0f
-                                },
-                                onDrag = { change, amount ->
-                                    change.consume()
-                                    dragOffsetY += amount.y
-                                    val cur = order
-                                    val from = cur.indexOf(item.id)
-                                    if (from < 0) return@detectDragGesturesAfterLongPress
-                                    val to = when {
-                                        dragOffsetY > rowStepPx * 0.5f && from < cur.lastIndex -> from + 1
-                                        dragOffsetY < -rowStepPx * 0.5f && from > 0 -> from - 1
-                                        else -> from
-                                    }
-                                    if (to != from) {
-                                        order = cur.toMutableList().also { l -> l.add(to, l.removeAt(from)) }
-                                        dragOffsetY -= (to - from) * rowStepPx
-                                    }
-                                },
-                                onDragEnd = {
-                                    onReorder(id, order)
-                                    draggingId = null
-                                    dragOffsetY = 0f
-                                },
-                                onDragCancel = {
-                                    onReorder(id, order)
-                                    draggingId = null
-                                    dragOffsetY = 0f
-                                },
-                            )
+                    .tapOrHoldDrag(
+                        key = item.id,
+                        enabled = canReorder,
+                        onTap = { onPlayItem(item) },
+                        onHold = {
+                            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                            draggingId = item.id
+                            dragOffsetY = 0f
+                        },
+                        onDrag = { dy ->
+                            dragOffsetY += dy
+                            val cur = order
+                            val from = cur.indexOf(item.id)
+                            if (from >= 0) {
+                                val to = when {
+                                    dragOffsetY > rowStepPx * 0.5f && from < cur.lastIndex -> from + 1
+                                    dragOffsetY < -rowStepPx * 0.5f && from > 0 -> from - 1
+                                    else -> from
+                                }
+                                if (to != from) {
+                                    order = cur.toMutableList().also { l -> l.add(to, l.removeAt(from)) }
+                                    dragOffsetY -= (to - from) * rowStepPx
+                                }
+                            }
+                        },
+                        onEnd = {
+                            onReorder(id, order)
+                            draggingId = null
+                            dragOffsetY = 0f
                         },
                     )
-                    .clickable(enabled = draggingId == null) { onPlayItem(item) }
                     .padding(horizontal = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {

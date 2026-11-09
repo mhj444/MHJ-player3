@@ -37,6 +37,17 @@ class SettingsDataStore(private val context: Context) {
         val showRemaining = booleanPreferencesKey("show_remaining")
     }
 
+    private val playlistOrderKey = stringPreferencesKey("playlist_order")
+
+    /** The order you dragged your own playlists into (playlist ids). */
+    val playlistOrder: Flow<List<Long>> = context.settingsDataStore.data.map { p ->
+        p[playlistOrderKey].orEmpty().split(',').mapNotNull { it.trim().toLongOrNull() }
+    }
+
+    suspend fun setPlaylistOrder(ids: List<Long>) {
+        context.settingsDataStore.edit { it[playlistOrderKey] = ids.joinToString(",") }
+    }
+
     val settings: Flow<AppSettings> = context.settingsDataStore.data.map { prefs ->
         prefs.toSettings()
     }

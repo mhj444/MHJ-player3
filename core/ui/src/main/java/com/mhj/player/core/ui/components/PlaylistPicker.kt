@@ -70,13 +70,14 @@ fun PlaylistPickerSheet(
     onCreate: (String) -> Unit,
     onDismiss: () -> Unit,
     hazeState: HazeState? = null,
+    backEnabled: Boolean = true,
 ) {
     val c = MhjTheme.colors
     var query by remember { mutableStateOf("") }
     var creating by remember { mutableStateOf(false) }
     var newName by remember { mutableStateOf("") }
     LaunchedEffect(visible) { if (!visible) { query = ""; creating = false; newName = "" } }
-    BackHandler(enabled = visible) { if (creating) creating = false else onDismiss() }
+    BackHandler(enabled = visible && backEnabled) { if (creating) creating = false else onDismiss() }
 
     MhjSheet(visible = visible, fromTop = false, heightFraction = 0.80f, onDismiss = onDismiss, hazeState = hazeState) {
         SheetTitle("افزودن به پلی‌لیست", subtitle)

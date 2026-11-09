@@ -88,6 +88,23 @@ class MainActivity : ComponentActivity() {
         if (result.any { (perm, ok) -> ok && perm != Manifest.permission.POST_NOTIFICATIONS }) viewModel.scanDeviceLibrary()
     }
 
+    private val rescanHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val rescan = Runnable { if (hasMediaPermission()) viewModel.scanDeviceLibrary() }
+    private var mediaWatcher: android.database.ContentObserver? = null
+
+    override fun onStart() {
+        super.onStart()
+        // Catch anything downloaded while the app was closed.
+        rescanHandler.removeCallbacks(rescan)
+        rescanHandler.postDelayed(rescan, 600)
+    }
+
+    override fun onDestroy() {
+        mediaWatcher?.let { contentResolver.unregisterContentObserver(it) }
+        rescanHandler.removeCallbacks(rescan)
+        super.onDestroy()
+    }
+
     /** True while the app is shown as a small floating video window. */
     private val inPip = mutableStateOf(false)
     /** Video is on screen and playing — going home should keep it in a small window. */
@@ -124,7 +141,16 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         WindowCompat.setDecorFitsSystemWindows(window, false)
         maybeRequestPermissions()
-        if (hasMediaPermission()) viewModel.scanDeviceLibrary()
+        // New songs or videos saved on the phone (downloads etc.) are added by themselves.
+        val watcher = object : android.database.ContentObserver(android.os.Handler(android.os.Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) {
+                rescanHandler.removeCallbacks(rescan)
+                rescanHandler.postDelayed(rescan, 4_000)
+            }
+        }
+        contentResolver.registerContentObserver(android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, true, watcher)
+        contentResolver.registerContentObserver(android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true, watcher)
+        mediaWatcher = watcher
 
         setContent {
             val settings by viewModel.settings.collectAsStateWithLifecycle()
@@ -447,6 +473,10 @@ private fun PlayerRoot(
                     },
                     onDeleteSelectedAsk = { deleteSelectedAsk = true },
                     onOpenFavorites = viewModel::openFavoritesPlaylist,
+                    onRenamePlaylist = viewModel::renamePlaylist,
+                    onDeletePlaylist = viewModel::deletePlaylist,
+                    onReorderPlaylists = viewModel::reorderPlaylists,
+                    backEnabled = transcript.viewerText == null && addToPlaylistAsk == null,
                     hazeState = hazeState,
                 )
                 BottomAudioDrawer(
@@ -461,7 +491,8 @@ private fun PlayerRoot(
                         status = transcript.statusFa,
                         error = transcript.errorFa,
                     ),
-                    saved = savedTranscripts.map { SavedTranscript(it.path, it.title, it.updatedAt) },
+                    saved = savedTranscripts.map { SavedTranscript(it.path, it.title, it.updatedAt, running = transcript.isRunning && transcript.activePath == it.path) },
+                    backEnabled = transcript.viewerText == null,
                     actions = remember(viewModel) {
                         AudioActions(
                             onToggleTranscript = {
@@ -607,6 +638,7 @@ private fun PlayerRoot(
                 },
                 onDismiss = { addToPlaylistAsk = null },
                 hazeState = hazeState,
+                backEnabled = transcript.viewerText == null,
             )
         }
     }

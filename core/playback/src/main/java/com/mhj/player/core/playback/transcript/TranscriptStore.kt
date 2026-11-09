@@ -22,6 +22,27 @@ class TranscriptStore(context: Context) {
         return file
     }
 
+    /**
+     * A fresh file for one run of speech-to-text. Running it again on the same song makes a new
+     * file ("title (2)") instead of adding the same words a second time to the old one.
+     */
+    fun newRun(mediaId: String, title: String): File {
+        val safeId = mediaId.replace(Regex("[^a-zA-Z0-9._-]"), "_")
+        val base = title.trim().ifEmpty { "Untitled" }
+        val earlier = root.listFiles { f -> f.extension == "txt" && (f.name == "$safeId.txt" || f.name.startsWith("${safeId}__")) }?.size ?: 0
+        val file = File(root, "${safeId}__${System.currentTimeMillis()}.txt")
+        val shownTitle = if (earlier == 0) base else "$base (${earlier + 1})"
+        file.writeText("$shownTitle\n\n")
+        putIndex(mediaId, file.name, shownTitle)
+        return file
+    }
+
+    fun appendTo(file: File, paragraph: String) {
+        val text = paragraph.trim()
+        if (text.isEmpty()) return
+        file.appendText("$text\n\n")
+    }
+
     fun appendParagraph(mediaId: String, title: String, paragraph: String) {
         val text = paragraph.trim()
         if (text.isEmpty()) return

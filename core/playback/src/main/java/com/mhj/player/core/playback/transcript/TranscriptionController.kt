@@ -23,6 +23,8 @@ data class TranscriptionUiState(
     val statusFa: String = "تبدیل گفتار رسانه به متن",
     val errorFa: String? = null,
     val activeMediaId: String? = null,
+    /** File being written right now (shown as "در حال نوشتن" in the list). */
+    val activePath: String? = null,
     val viewerText: String? = null,
     val viewerTitle: String? = null,
 )
@@ -138,8 +140,10 @@ class TranscriptionController(
                     statusFa = "در حال آماده‌سازی صدا…",
                 )
 
-                // Ensure heading exists even before first paragraph
-                store.fileFor(mediaId, title)
+                // Each run writes its own new file (a second run does not repeat into the first one).
+                val out = store.newRun(mediaId, title)
+                _state.value = _state.value.copy(activePath = out.absolutePath)
+                refreshHistory()
 
                 val model = Model(modelDir.absolutePath)
                 val recognizer = Recognizer(model, MediaPcmDecoder.TARGET_SAMPLE_RATE.toFloat())
@@ -159,7 +163,7 @@ class TranscriptionController(
                             if (accepted) {
                                 val text = extractText(recognizer.result)
                                 if (text.isNotBlank()) {
-                                    store.appendParagraph(mediaId, title, text)
+                                    store.appendTo(out, text)
                                     wroteAny = true
                                     val pct = (_state.value.progress * 100).toInt().coerceIn(0, 99)
                                     _state.value = _state.value.copy(
@@ -184,7 +188,7 @@ class TranscriptionController(
                     // Stop / EOS: flush remaining hypothesis into the same txt
                     val finalText = extractText(recognizer.finalResult)
                     if (finalText.isNotBlank()) {
-                        store.appendParagraph(mediaId, title, finalText)
+                        store.appendTo(out, finalText)
                         wroteAny = true
                     }
                 } finally {
@@ -192,6 +196,7 @@ class TranscriptionController(
                     runCatching { model.close() }
                 }
 
+                if (!wroteAny) runCatching { out.delete() }
                 if (cancelRequested) {
                     _state.value = TranscriptionUiState(
                         isRunning = false,
