@@ -93,6 +93,15 @@ interface PlaylistDao {
     @Query("SELECT id FROM playlists WHERE smartKind = :kind LIMIT 1")
     suspend fun findSmartId(kind: String): Long?
 
+    @Query(
+        """
+        SELECT id FROM playlists
+        WHERE isSmart = 0 AND LOWER(name) = 'favorites'
+        LIMIT 1
+        """,
+    )
+    suspend fun findFavoritesId(): Long?
+
     @Query("DELETE FROM playlists WHERE id = :id")
     suspend fun delete(id: Long)
 

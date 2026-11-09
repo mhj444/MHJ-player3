@@ -109,6 +109,30 @@ class LibraryRepository(
         ensure(SMART_MOST, "Most played")
     }
 
+    /** Persistent user Favorites playlist (not a computed smart list). */
+    suspend fun ensureFavoritesPlaylistId(): Long {
+        playlistDao.findFavoritesId()?.let { return it }
+        return createPlaylist("Favorites", isSmart = false, smartKind = null)
+    }
+
+
+    suspend fun isInFavorites(mediaId: String): Boolean {
+        val favId = ensureFavoritesPlaylistId()
+        return getPlaylistMedia(favId).any { it.id == mediaId }
+    }
+
+    suspend fun toggleFavorite(mediaId: String): Boolean {
+        val favId = ensureFavoritesPlaylistId()
+        val tracks = getPlaylistMedia(favId)
+        return if (tracks.any { it.id == mediaId }) {
+            removeFromPlaylist(favId, mediaId)
+            false
+        } else {
+            addToPlaylist(favId, mediaId, tracks.size)
+            true
+        }
+    }
+
     suspend fun refreshSmartPlaylists() {
         ensureSmartPlaylists()
         val newestId = playlistDao.findSmartId(SMART_NEWEST) ?: return

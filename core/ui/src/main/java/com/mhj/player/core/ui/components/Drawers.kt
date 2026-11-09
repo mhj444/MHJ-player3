@@ -14,6 +14,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -35,24 +36,32 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -60,6 +69,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
+import kotlin.math.abs
 import com.mhj.player.core.model.AppSettings
 import com.mhj.player.core.model.AppTheme
 import com.mhj.player.core.model.LibraryFilter
@@ -80,7 +91,7 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 
 private enum class TopPage { ROOT, LIBRARY, PLAYLISTS, FAVORITES, THEME, PLAYLIST_DETAIL }
-private enum class AudioPage { ROOT, SPEED, TIMER }
+private enum class AudioPage { ROOT, SPEED, TIMER, EQUALIZER }
 
 @Composable
 fun TopMenuDrawer(
@@ -112,19 +123,30 @@ fun TopMenuDrawer(
     onRemoveFromPlaylist: (Long, String) -> Unit = { _, _ -> },
     onReorderPlaylist: (Long, List<String>) -> Unit = { _, _ -> },
     onSharePlaylistTrack: (MediaItemModel) -> Unit = {},
+    onAddPlaylistTrackToPlaylistAsk: (MediaItemModel) -> Unit = {},
+    selectionMode: Boolean = false,
+    onEnterSelection: (String) -> Unit = {},
+    onShareSelected: () -> Unit = {},
+    onAddSelectedToPlaylist: () -> Unit = {},
+    onDeleteSelectedAsk: () -> Unit = {},
+    onOpenFavorites: () -> Unit = {},
     modifier: Modifier = Modifier,
     hazeState: HazeState? = null,
 ) {
     var page by remember { mutableStateOf(TopPage.ROOT) }
     var playlistReturn by remember { mutableStateOf(TopPage.PLAYLISTS) }
     LaunchedEffect(visible) {
-        if (!visible) page = TopPage.ROOT
+        if (!visible) {
+            page = TopPage.ROOT
+            onClearSelection()
+        }
     }
 
     BackHandler(enabled = visible) {
-        when (page) {
-            TopPage.ROOT -> onDismiss()
-            TopPage.PLAYLIST_DETAIL -> page = playlistReturn
+        when {
+            selectionMode -> onClearSelection()
+            page == TopPage.ROOT -> onDismiss()
+            page == TopPage.PLAYLIST_DETAIL -> page = playlistReturn
             else -> page = TopPage.ROOT
         }
     }
@@ -150,7 +172,9 @@ fun TopMenuDrawer(
                 }
                 Spacer(Modifier.height(8.dp))
                 MenuNavRow("Favorites", "علاقه‌مندی‌ها", if (MhjTheme.colors.isDark) R.drawable.icon_mid_home else R.drawable.icon_porc_home) {
-                    page = TopPage.FAVORITES
+                    playlistReturn = TopPage.ROOT
+                    onOpenFavorites()
+                    page = TopPage.PLAYLIST_DETAIL
                 }
                 Spacer(Modifier.height(8.dp))
                 MenuNavRow("Theme", "تم", if (MhjTheme.colors.isDark) R.drawable.icon_mid_night else R.drawable.icon_porc_night) {
@@ -161,10 +185,14 @@ fun TopMenuDrawer(
                 items = libraryItems,
                 filter = filter,
                 selectedIds = selectedIds,
+                selectionMode = selectionMode,
                 scanning = scanning,
-                onBack = { page = TopPage.ROOT },
+                onBack = {
+                    if (selectionMode) onClearSelection() else page = TopPage.ROOT
+                },
                 onUpdateFilter = onUpdateFilter,
                 onToggleSelect = onToggleSelect,
+                onEnterSelection = onEnterSelection,
                 onClearSelection = onClearSelection,
                 onPlayItem = onPlayItem,
                 onScanDevice = onScanDevice,
@@ -174,9 +202,14 @@ fun TopMenuDrawer(
                 onDeleteItemAsk = onDeleteItemAsk,
                 onRenameItemAsk = onRenameItemAsk,
                 onAddItemToPlaylistAsk = onAddItemToPlaylistAsk,
+                onShareSelected = onShareSelected,
+                onAddSelectedToPlaylist = onAddSelectedToPlaylist,
+                onDeleteSelectedAsk = onDeleteSelectedAsk,
             )
             TopPage.PLAYLISTS -> PlaylistsPage(
-                playlists = playlists.filter { it.smartKind != "favorites" },
+                playlists = playlists.filter {
+                    !(it.name.equals("Favorites", ignoreCase = true) && !it.isSmart)
+                },
                 onBack = { page = TopPage.ROOT },
                 onCreatePlaylist = onCreatePlaylist,
                 onOpenPlaylist = { id ->
@@ -185,20 +218,10 @@ fun TopMenuDrawer(
                     page = TopPage.PLAYLIST_DETAIL
                 },
             )
-            TopPage.FAVORITES -> PlaylistsPage(
-                playlists = playlists.filter {
-                    !it.isSmart && it.name.equals("Favorites", ignoreCase = true)
-                }.ifEmpty { playlists.filter { !it.isSmart }.take(1) },
-                onBack = { page = TopPage.ROOT },
-                onCreatePlaylist = onCreatePlaylist,
-                onOpenPlaylist = { id ->
-                    playlistReturn = TopPage.FAVORITES
-                    onOpenPlaylist(id)
-                    page = TopPage.PLAYLIST_DETAIL
-                },
-                title = "Favorites",
-                subtitle = "علاقه‌مندی‌ها",
-            )
+            TopPage.FAVORITES -> {
+                // Favorites opens PLAYLIST_DETAIL via onOpenFavorites from ROOT
+                page = TopPage.PLAYLIST_DETAIL
+            }
             TopPage.PLAYLIST_DETAIL -> PlaylistDetailPage(
                 playlist = activePlaylist,
                 tracks = playlistTracks,
@@ -208,6 +231,7 @@ fun TopMenuDrawer(
                 onRemove = onRemoveFromPlaylist,
                 onReorder = onReorderPlaylist,
                 onShare = onSharePlaylistTrack,
+                onAddToPlaylistAsk = onAddPlaylistTrackToPlaylistAsk,
             )
             TopPage.THEME -> {
                 PageHeader("Theme", "تم") { page = TopPage.ROOT }
@@ -238,6 +262,7 @@ fun BottomAudioDrawer(
     transcriptProgress: Float = 0f,
     transcriptStatusFa: String = "تبدیل گفتار رسانه به متن",
     transcriptErrorFa: String? = null,
+    isFavorite: Boolean = false,
     onDismiss: () -> Unit,
     onToggleTranscript: () -> Unit = {},
     onOpenTranscriptFolder: () -> Unit = {},
@@ -245,7 +270,10 @@ fun BottomAudioDrawer(
     onSpeedChange: (Float) -> Unit,
     onSpeedNudge: (Float) -> Unit,
     onAbClick: () -> Unit = {},
-    onEqClick: () -> Unit,
+    onOpenSystemEq: () -> Unit = {},
+    onEqBandChange: (Int, Float) -> Unit = { _, _ -> },
+    onEqPreset: (String) -> Unit = {},
+    onToggleFavorite: () -> Unit = {},
     onTimerChange: (Int) -> Unit,
     modifier: Modifier = Modifier,
     hazeState: HazeState? = null,
@@ -265,6 +293,7 @@ fun BottomAudioDrawer(
     OverlaySheet(
         visible = visible,
         fromTop = false,
+        tall = page == AudioPage.EQUALIZER,
         onDismiss = {
             page = AudioPage.ROOT
             onDismiss()
@@ -334,13 +363,20 @@ fun BottomAudioDrawer(
                     ) { page = AudioPage.SPEED }
                 }
                 Spacer(Modifier.height(12.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     OfficialGridTile(
                         Modifier.weight(1f),
                         if (dark) R.drawable.icon_mid_equalizer else R.drawable.icon_porc_equalizer,
                         "Equalizer",
-                        "Open",
-                        onEqClick,
+                        "Bands",
+                    ) { page = AudioPage.EQUALIZER }
+                    FavoriteHeartButton(
+                        favorited = isFavorite,
+                        onClick = onToggleFavorite,
                     )
                     OfficialGridTile(
                         Modifier.weight(1f),
@@ -361,6 +397,85 @@ fun BottomAudioDrawer(
                 onBack = { page = AudioPage.ROOT },
                 onTimerChange = onTimerChange,
             )
+            AudioPage.EQUALIZER -> EqualizerPage(
+                settings = settings,
+                onBack = { page = AudioPage.ROOT },
+                onBandChange = onEqBandChange,
+                onPreset = onEqPreset,
+                onOpenSystemEq = onOpenSystemEq,
+            )
+        }
+    }
+}
+
+@Composable
+private fun FavoriteHeartButton(
+    favorited: Boolean,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .size(56.dp)
+            .softEmboss(16.dp, MhjTheme.colors.lightShadow, MhjTheme.colors.darkShadow, 8.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(MhjTheme.colors.elevated)
+            .softGoldHairline(16.dp)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            if (favorited) "♥" else "♡",
+            color = if (favorited) Color(0xFFE53935) else MhjColors.GoldHi,
+            fontSize = 28.sp,
+        )
+    }
+}
+
+@Composable
+private fun ColumnScope.EqualizerPage(
+    settings: AppSettings,
+    onBack: () -> Unit,
+    onBandChange: (Int, Float) -> Unit,
+    onPreset: (String) -> Unit,
+    onOpenSystemEq: () -> Unit,
+) {
+    val bands = settings.eqBands.let { if (it.size >= 5) it else listOf(0f, 0f, 0f, 0f, 0f) }
+    val labels = listOf("60 Hz", "230 Hz", "910 Hz", "3.6 kHz", "14 kHz")
+    PageHeader("Equalizer", "اکولایزر", onBack)
+    Spacer(Modifier.height(6.dp))
+    Text(
+        "Live session · android.media.audiofx.Equalizer",
+        color = MhjTheme.colors.muted,
+        fontSize = 12.sp,
+    )
+    Spacer(Modifier.height(10.dp))
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        listOf("Flat", "Bass", "Treble", "Vocal").forEach { name ->
+            ActionChip(name) { onPreset(name) }
+        }
+    }
+    Spacer(Modifier.height(8.dp))
+    ActionChip("System EQ panel") { onOpenSystemEq() }
+    Spacer(Modifier.height(12.dp))
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .weight(1f, fill = true)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        bands.forEachIndexed { index, value ->
+            Text(labels[index], color = MhjTheme.colors.onBackground, fontSize = 13.sp)
+            Slider(
+                value = value,
+                onValueChange = { onBandChange(index, it) },
+                valueRange = -1f..1f,
+                colors = SliderDefaults.colors(
+                    thumbColor = MhjColors.GoldHi,
+                    activeTrackColor = MhjColors.Gold,
+                    inactiveTrackColor = MhjTheme.colors.controlFill,
+                ),
+            )
         }
     }
 }
@@ -375,18 +490,51 @@ private fun SpeedOnlyDial(
     val c = MhjTheme.colors
     val dark = c.isDark
     val speedLabel = String.format("%.1fx", settings.playbackSpeed)
+    val progress = ((settings.playbackSpeed - 0.25f) / 2.75f).coerceIn(0f, 1f)
     PageHeader("Playback Speed", "سرعت پخش", onBack)
     Spacer(Modifier.height(8.dp))
-    DialCard(
-        centerLabel = speedLabel,
-        progress = ((settings.playbackSpeed - 0.25f) / 2.75f).coerceIn(0f, 1f),
-        ticks = listOf("0.5x", "1.0x", "1.5x", "2.0x", "3.0x"),
-        onProgressChange = { p ->
+    // Official speed glyph (needle sits on the embossed semicircle in the asset)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(168.dp)
+            .softEmboss(24.dp, c.lightShadow, c.darkShadow, 12.dp)
+            .clip(RoundedCornerShape(24.dp))
+            .background(Brush.verticalGradient(listOf(c.elevated, c.surface)))
+            .softGoldHairline(24.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Image(
+            painter = painterResource(if (dark) R.drawable.icon_mid_speed else R.drawable.icon_porc_speed),
+            contentDescription = "Speed",
+            modifier = Modifier.size(112.dp),
+            contentScale = ContentScale.Fit,
+        )
+        Text(
+            speedLabel,
+            color = c.primary,
+            fontSize = 22.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = FontFamily.Serif,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 16.dp),
+        )
+    }
+    Spacer(Modifier.height(10.dp))
+    Slider(
+        value = progress,
+        onValueChange = { p ->
             val speed = (0.25f + p * 2.75f).let { (it * 20f).roundToInt() / 20f }
             onSpeedChange(speed.coerceIn(0.25f, 3.0f))
         },
+        colors = SliderDefaults.colors(
+            thumbColor = MhjColors.GoldHi,
+            activeTrackColor = MhjColors.Gold,
+            inactiveTrackColor = c.controlFill,
+        ),
     )
-    Spacer(Modifier.height(8.dp))
+    Spacer(Modifier.height(4.dp))
     Row(
         Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceEvenly,
@@ -456,10 +604,12 @@ private fun ColumnScope.LibraryPage(
     items: List<MediaItemModel>,
     filter: LibraryFilter,
     selectedIds: Set<String>,
+    selectionMode: Boolean,
     scanning: Boolean,
     onBack: () -> Unit,
     onUpdateFilter: ((LibraryFilter) -> LibraryFilter) -> Unit,
     onToggleSelect: (String) -> Unit,
+    onEnterSelection: (String) -> Unit,
     onClearSelection: () -> Unit,
     onPlayItem: (MediaItemModel) -> Unit,
     onScanDevice: () -> Unit,
@@ -469,6 +619,9 @@ private fun ColumnScope.LibraryPage(
     onDeleteItemAsk: (MediaItemModel) -> Unit,
     onRenameItemAsk: (MediaItemModel) -> Unit,
     onAddItemToPlaylistAsk: (MediaItemModel) -> Unit,
+    onShareSelected: () -> Unit,
+    onAddSelectedToPlaylist: () -> Unit,
+    onDeleteSelectedAsk: () -> Unit,
 ) {
     PageHeader("Library", "کتابخانه", onBack)
     Spacer(Modifier.height(8.dp))
@@ -516,95 +669,142 @@ private fun ColumnScope.LibraryPage(
             }
         }
     }
-    if (selectedIds.isNotEmpty()) {
-        Spacer(Modifier.height(6.dp))
-        ActionChip("Clear selection") { onClearSelection() }
-    }
     Spacer(Modifier.height(8.dp))
-    LazyColumn(
-        modifier = Modifier
+    Box(
+        Modifier
             .fillMaxWidth()
             .weight(1f, fill = true),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        items(items, key = { it.id }) { item ->
-            val selected = item.id in selectedIds
-            var menuOpen by remember { mutableStateOf(false) }
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                bottom = if (selectionMode) 64.dp else 0.dp,
+            ),
+        ) {
+            items(items, key = { it.id }) { item ->
+                val selected = item.id in selectedIds
+                var menuOpen by remember { mutableStateOf(false) }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(if (selected) MhjTheme.colors.controlFill else MhjTheme.colors.elevated)
+                        .border(
+                            1.dp,
+                            if (selected) MhjColors.Gold.copy(alpha = 0.7f) else Color.Transparent,
+                            RoundedCornerShape(14.dp),
+                        )
+                        .pointerInput(selectionMode, item.id) {
+                            detectTapGestures(
+                                onLongPress = { onEnterSelection(item.id) },
+                                onTap = {
+                                    if (selectionMode) onToggleSelect(item.id) else onPlayItem(item)
+                                },
+                            )
+                        }
+                        .padding(horizontal = 10.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (selectionMode) {
+                        Box(
+                            Modifier
+                                .size(22.dp)
+                                .clip(CircleShape)
+                                .background(if (selected) MhjColors.Gold else Color.Transparent)
+                                .border(1.dp, MhjColors.Gold, CircleShape),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            if (selected) {
+                                Text("✓", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        Spacer(Modifier.width(10.dp))
+                    }
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            item.title,
+                            color = MhjTheme.colors.onBackground,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            "${item.artist} · ${item.kind.name.lowercase()} · ${item.format.ifEmpty { "?" }}",
+                            color = MhjTheme.colors.muted,
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    if (!selectionMode) {
+                        Box {
+                            Text(
+                                "⋮",
+                                color = MhjColors.GoldHi,
+                                fontSize = 22.sp,
+                                modifier = Modifier
+                                    .clickable { menuOpen = true }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                            )
+                            androidx.compose.material3.DropdownMenu(
+                                expanded = menuOpen,
+                                onDismissRequest = { menuOpen = false },
+                            ) {
+                                androidx.compose.material3.DropdownMenuItem(
+                                    text = { Text("اشتراک‌گذاری") },
+                                    onClick = { menuOpen = false; onShareItem(item) },
+                                )
+                                androidx.compose.material3.DropdownMenuItem(
+                                    text = { Text("حذف از دستگاه") },
+                                    onClick = { menuOpen = false; onDeleteItemAsk(item) },
+                                )
+                                androidx.compose.material3.DropdownMenuItem(
+                                    text = { Text("افزودن به پلی‌لیست") },
+                                    onClick = { menuOpen = false; onAddItemToPlaylistAsk(item) },
+                                )
+                                androidx.compose.material3.DropdownMenuItem(
+                                    text = { Text("تغییر نام") },
+                                    onClick = { menuOpen = false; onRenameItemAsk(item) },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (selectionMode) {
             Row(
                 modifier = Modifier
+                    .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(if (selected) MhjTheme.colors.controlFill else MhjTheme.colors.elevated)
-                    .border(
-                        1.dp,
-                        if (selected) MhjColors.Gold.copy(alpha = 0.7f) else Color.Transparent,
-                        RoundedCornerShape(14.dp),
-                    )
-                    .clickable { onPlayItem(item) }
-                    .padding(horizontal = 10.dp, vertical = 10.dp),
+                    .padding(bottom = 4.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color(0xEE1A1A20))
+                    .softGoldHairline(16.dp)
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(
-                    Modifier
-                        .size(22.dp)
-                        .clip(CircleShape)
-                        .border(1.dp, MhjColors.Gold, CircleShape)
-                        .clickable { onToggleSelect(item.id) },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    if (selected) {
-                        Box(Modifier.size(10.dp).clip(CircleShape).background(MhjColors.Gold))
-                    }
-                }
-                Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        item.title,
-                        color = MhjTheme.colors.onBackground,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        "${item.artist} · ${item.kind.name.lowercase()} · ${item.format.ifEmpty { "?" }}",
-                        color = MhjTheme.colors.muted,
-                        fontSize = 11.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                Box {
-                    Text(
-                        "⋮",
-                        color = MhjColors.GoldHi,
-                        fontSize = 22.sp,
-                        modifier = Modifier
-                            .clickable { menuOpen = true }
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                    )
-                    androidx.compose.material3.DropdownMenu(
-                        expanded = menuOpen,
-                        onDismissRequest = { menuOpen = false },
-                    ) {
-                        androidx.compose.material3.DropdownMenuItem(
-                            text = { Text("اشتراک‌گذاری") },
-                            onClick = { menuOpen = false; onShareItem(item) },
-                        )
-                        androidx.compose.material3.DropdownMenuItem(
-                            text = { Text("حذف از دستگاه") },
-                            onClick = { menuOpen = false; onDeleteItemAsk(item) },
-                        )
-                        androidx.compose.material3.DropdownMenuItem(
-                            text = { Text("افزودن به پلی‌لیست") },
-                            onClick = { menuOpen = false; onAddItemToPlaylistAsk(item) },
-                        )
-                        androidx.compose.material3.DropdownMenuItem(
-                            text = { Text("تغییر نام") },
-                            onClick = { menuOpen = false; onRenameItemAsk(item) },
-                        )
-                    }
-                }
+                Text(
+                    "اشتراک (${selectedIds.size})",
+                    color = MhjColors.GoldHi,
+                    fontSize = 13.sp,
+                    modifier = Modifier.clickable(onClick = onShareSelected),
+                )
+                Text(
+                    "پلی‌لیست",
+                    color = MhjColors.GoldHi,
+                    fontSize = 13.sp,
+                    modifier = Modifier.clickable(onClick = onAddSelectedToPlaylist),
+                )
+                Text(
+                    "حذف",
+                    color = Color(0xFFFF8A80),
+                    fontSize = 13.sp,
+                    modifier = Modifier.clickable(onClick = onDeleteSelectedAsk),
+                )
             }
         }
     }
@@ -684,25 +884,34 @@ private fun ColumnScope.PlaylistDetailPage(
     onRemove: (Long, String) -> Unit,
     onReorder: (Long, List<String>) -> Unit,
     onShare: (MediaItemModel) -> Unit,
+    onAddToPlaylistAsk: (MediaItemModel) -> Unit,
 ) {
     val id = playlist?.id ?: return
     val canReorder = playlist?.isSmart != true
-    var order by remember(playlist?.id, tracks) {
-        mutableStateOf(tracks.map { it.id })
-    }
-    LaunchedEffect(tracks) {
-        order = tracks.map { it.id }
+    var order by remember(playlist?.id) { mutableStateOf(tracks.map { it.id }) }
+    LaunchedEffect(tracks.map { it.id }) {
+        if (order.toSet() != tracks.map { it.id }.toSet() || order.size != tracks.size) {
+            order = tracks.map { it.id }
+        }
     }
     val orderedTracks = remember(order, tracks) {
         val map = tracks.associateBy { it.id }
         order.mapNotNull { map[it] }
     }
-    PageHeader(playlist?.name ?: "Playlist", if (playlist?.isSmart == true) "پیش‌فرض" else "پلی‌لیست") { onBack() }
+    var draggingIndex by remember { mutableIntStateOf(-1) }
+    var dragOffsetY by remember { mutableFloatStateOf(0f) }
+    val density = LocalDensity.current
+    val rowHeightPx = with(density) { 58.dp.toPx() }
+
+    PageHeader(
+        playlist?.name ?: "Playlist",
+        if (playlist?.isSmart == true) "پیش‌فرض" else if (playlist?.name.equals("Favorites", true) == true) "علاقه‌مندی‌ها" else "پلی‌لیست",
+    ) { onBack() }
     Spacer(Modifier.height(8.dp))
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         ActionChip("Play all") { onPlayAll(id) }
         if (canReorder) {
-            Text("Long-press ☰ then drag to reorder", color = MhjTheme.colors.muted, fontSize = 11.sp)
+            Text("Long-press & drag to reorder", color = MhjTheme.colors.muted, fontSize = 11.sp)
         }
     }
     Spacer(Modifier.height(8.dp))
@@ -717,31 +926,70 @@ private fun ColumnScope.PlaylistDetailPage(
         ) {
             itemsIndexed(orderedTracks, key = { _, t -> t.id }) { index, item ->
                 var menuOpen by remember { mutableStateOf(false) }
+                val dragging = draggingIndex == index
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .zIndex(if (dragging) 2f else 0f)
+                        .graphicsLayer {
+                            if (dragging) {
+                                translationY = dragOffsetY
+                                scaleX = 1.04f
+                                scaleY = 1.04f
+                                shadowElevation = 18f
+                            }
+                        }
+                        .then(
+                            if (dragging) {
+                                Modifier.shadow(10.dp, RoundedCornerShape(14.dp), ambientColor = MhjColors.Gold)
+                            } else {
+                                Modifier
+                            },
+                        )
                         .clip(RoundedCornerShape(14.dp))
-                        .background(MhjTheme.colors.elevated)
+                        .background(if (dragging) MhjTheme.colors.controlFill else MhjTheme.colors.elevated)
+                        .border(
+                            if (dragging) 1.dp else 0.dp,
+                            if (dragging) MhjColors.Gold else Color.Transparent,
+                            RoundedCornerShape(14.dp),
+                        )
                         .then(
                             if (canReorder) {
-                                Modifier.pointerInput(order) {
+                                Modifier.pointerInput(order, index) {
                                     detectDragGesturesAfterLongPress(
-                                        onDrag = { change, drag ->
+                                        onDragStart = {
+                                            draggingIndex = index
+                                            dragOffsetY = 0f
+                                        },
+                                        onDragCancel = {
+                                            draggingIndex = -1
+                                            dragOffsetY = 0f
+                                        },
+                                        onDragEnd = {
+                                            draggingIndex = -1
+                                            dragOffsetY = 0f
+                                            onReorder(id, order)
+                                        },
+                                        onDrag = { change, dragAmount ->
                                             change.consume()
-                                            if (drag.y > 28f && index < order.lastIndex) {
-                                                val mutable = order.toMutableList()
-                                                val tmp = mutable[index]
-                                                mutable[index] = mutable[index + 1]
-                                                mutable[index + 1] = tmp
-                                                order = mutable
-                                                onReorder(id, order)
-                                            } else if (drag.y < -28f && index > 0) {
-                                                val mutable = order.toMutableList()
-                                                val tmp = mutable[index]
-                                                mutable[index] = mutable[index - 1]
-                                                mutable[index - 1] = tmp
-                                                order = mutable
-                                                onReorder(id, order)
+                                            dragOffsetY += dragAmount.y
+                                            val from = draggingIndex
+                                            if (from < 0) return@detectDragGesturesAfterLongPress
+                                            val shift = when {
+                                                dragOffsetY > rowHeightPx * 0.55f -> 1
+                                                dragOffsetY < -rowHeightPx * 0.55f -> -1
+                                                else -> 0
+                                            }
+                                            if (shift != 0) {
+                                                val to = (from + shift).coerceIn(0, order.lastIndex)
+                                                if (to != from) {
+                                                    val mutable = order.toMutableList()
+                                                    val moved = mutable.removeAt(from)
+                                                    mutable.add(to, moved)
+                                                    order = mutable
+                                                    draggingIndex = to
+                                                    dragOffsetY -= shift * rowHeightPx
+                                                }
                                             }
                                         },
                                     )
@@ -750,7 +998,7 @@ private fun ColumnScope.PlaylistDetailPage(
                                 Modifier
                             },
                         )
-                        .clickable { onPlayItem(item) }
+                        .clickable(enabled = !dragging) { onPlayItem(item) }
                         .padding(horizontal = 10.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -775,7 +1023,11 @@ private fun ColumnScope.PlaylistDetailPage(
                             expanded = menuOpen,
                             onDismissRequest = { menuOpen = false },
                         ) {
-                            if (canReorder) {
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text("افزودن به پلی‌لیست") },
+                                onClick = { menuOpen = false; onAddToPlaylistAsk(item) },
+                            )
+                            if (canReorder || playlist?.name.equals("Favorites", true) == true) {
                                 androidx.compose.material3.DropdownMenuItem(
                                     text = { Text("حذف از این پلی‌لیست") },
                                     onClick = {
@@ -929,7 +1181,8 @@ private fun DialCard(
                 )
             }
             val nang = Math.toRadians(startDeg + sweepDeg * progress.coerceIn(0f, 1f).toDouble())
-            val tipR = radius - 8.dp.toPx()
+            // Tip lands on the arc stroke centerline (not past it)
+            val tipR = radius
             drawLine(
                 brush = Brush.linearGradient(listOf(MhjColors.GoldHi, MhjColors.GoldLo)),
                 start = Offset(cx, cy),

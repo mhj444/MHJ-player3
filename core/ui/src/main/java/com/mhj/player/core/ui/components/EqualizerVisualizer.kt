@@ -1,16 +1,9 @@
 package com.mhj.player.core.ui.components
 
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -22,7 +15,10 @@ import com.mhj.player.core.ui.theme.MhjTheme
 import kotlin.math.PI
 import kotlin.math.sin
 
-/** Board EQ: tall solid gold bars (dense, glowing — not dotted dashes). */
+/**
+ * Static gold bar decoration under the title — not a fake self-animating equalizer.
+ * Heights are fixed from a sine envelope (no infinite transition).
+ */
 @Composable
 fun EqualizerVisualizer(
     active: Boolean,
@@ -30,17 +26,7 @@ fun EqualizerVisualizer(
     barCount: Int = 48,
 ) {
     val colors = MhjTheme.colors
-    val transition = rememberInfiniteTransition(label = "eq")
-    val phase by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = (2f * PI).toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(if (active) 1400 else 6000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "eqPhase",
-    )
-    val intensity = if (active) 1f else 0.62f
+    val intensity = if (active) 1f else 0.45f
 
     Canvas(
         modifier = modifier
@@ -58,16 +44,13 @@ fun EqualizerVisualizer(
         for (i in 0 until barCount) {
             val t = i / (barCount - 1f)
             val envelope = sin(t * PI).toFloat().coerceIn(0.22f, 1f)
-            val wave = (
-                sin(phase + i * 0.42f) * 0.48f +
-                    sin(phase * 1.55f + i * 0.27f) * 0.32f +
-                    0.48f
-                ).coerceIn(0.28f, 1f)
+            // Deterministic static pattern (no time-based animation)
+            val wave = (0.55f + 0.35f * sin(i * 0.55f).toFloat()).coerceIn(0.28f, 1f)
             val barH = h * 0.96f * wave * envelope * intensity
             val x = startX + i * (barW + gap)
             val y = baseY - barH
             drawRoundRect(
-                color = MhjColors.GoldGlow.copy(alpha = 0.34f),
+                color = MhjColors.GoldGlow.copy(alpha = 0.28f),
                 topLeft = Offset(x - 2f, y - 2f),
                 size = Size(barW + 4f, barH + 4f),
                 cornerRadius = CornerRadius(barW / 2f, barW / 2f),

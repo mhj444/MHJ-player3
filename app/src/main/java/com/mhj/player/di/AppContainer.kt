@@ -88,9 +88,10 @@ class AppContainer(context: Context) {
     }
 
     private suspend fun ensureFavoritesPlaylist() {
-        val playlists = libraryRepository.observePlaylists().first()
-        if (playlists.any { !it.isSmart && it.name.equals("Favorites", ignoreCase = true) }) return
-        val id = libraryRepository.createPlaylist("Favorites")
-        libraryRepository.addToPlaylist(id, "demo_music_1", 0)
+        val id = libraryRepository.ensureFavoritesPlaylistId()
+        val tracks = libraryRepository.getPlaylistMedia(id)
+        if (tracks.isEmpty()) {
+            libraryRepository.addToPlaylist(id, "demo_music_1", 0)
+        }
     }
 }

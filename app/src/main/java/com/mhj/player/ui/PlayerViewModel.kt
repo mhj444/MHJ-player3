@@ -77,21 +77,55 @@ class PlayerViewModel(
     private val _selectedIds = MutableStateFlow<Set<String>>(emptySet())
     val selectedIds: StateFlow<Set<String>> = _selectedIds
 
+    private val _selectionMode = MutableStateFlow(false)
+    val selectionMode: StateFlow<Boolean> = _selectionMode
+
     private val _scanning = MutableStateFlow(false)
     val scanning: StateFlow<Boolean> = _scanning
 
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val favoritesPlaylistId: StateFlow<Long?> = playlists
+        .map { list ->
+            list.firstOrNull { !it.isSmart && it.name.equals("Favorites", ignoreCase = true) }?.id
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val favoriteIds: StateFlow<Set<String>> = favoritesPlaylistId
+        .flatMapLatest { id ->
+            if (id == null) flowOf(emptyList()) else library.observePlaylistMedia(id)
+        }
+        .map { list -> list.map { it.id }.toSet() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+
+    val isCurrentFavorite: StateFlow<Boolean> = combine(playerState, favoriteIds) { state, ids ->
+        state.current?.id?.let { it in ids } == true
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
     init {
+        viewModelScope.launch {
+            library.ensureFavoritesPlaylistId()
+        }
         viewModelScope.launch {
             playback.state
                 .map { it.audioSessionId }
                 .distinctUntilChanged()
-                .collect { sessionId -> audioEffects.bindSession(sessionId) }
+                .collect { sessionId ->
+                    if (sessionId > 0) {
+                        audioEffects.bindSession(sessionId)
+                        audioEffects.setBandLevels(settings.value.eqBands.toFloatArray())
+                        audioEffects.setNightMode(settings.value.nightModeAudio)
+                    }
+                }
         }
         viewModelScope.launch {
             settingsStore.settings
-                .map { it.nightModeAudio }
+                .map { it.nightModeAudio to it.eqBands }
                 .distinctUntilChanged()
-                .collect { night -> audioEffects.setNightMode(night) }
+                .collect { (night, bands) ->
+                    audioEffects.setNightMode(night)
+                    audioEffects.setBandLevels(bands.toFloatArray())
+                }
         }
         viewModelScope.launch {
             // Increment play count when the current media id changes while playing
@@ -163,33 +197,80 @@ class PlayerViewModel(
 
     fun tapAbLoop(): String = playback.tapAbLoop()
 
+    /** Ensure a live non-zero audio session while playing. */
+    suspend fun ensureAudioSession(): Int {
+        var session = audioSessionId()
+        if (session > 0) {
+            audioEffects.bindSession(session)
+            audioEffects.setBandLevels(settings.value.eqBands.toFloatArray())
+            return session
+        }
+        playback.awaitConnected()
+        if (!playerState.value.isPlaying && playerState.value.current != null) {
+            playback.togglePlayPause()
+        } else if (playerState.value.current == null) {
+            val queue = allLibraryItems.value.filter { it.kind == MediaKind.MUSIC }
+            if (queue.isNotEmpty()) playback.play(queue, 0)
+        }
+        repeat(20) {
+            kotlinx.coroutines.delay(50)
+            session = audioSessionId()
+            if (session > 0) {
+                audioEffects.bindSession(session)
+                audioEffects.setBandLevels(settings.value.eqBands.toFloatArray())
+                return session
+            }
+        }
+        return audioSessionId()
+    }
+
     /**
-     * Bind the live audio session (starting playback if needed) and return
-     * OPEN_SESSION broadcast + DISPLAY panel intents with EXTRA_AUDIO_SESSION set.
+     * Bind the live audio session and return OPEN_SESSION + DISPLAY intents.
+     * Releases our Equalizer temporarily so MusicFX can attach; call [onSystemEqReturned] after.
      */
     suspend fun prepareEqualizerIntents(packageName: String): List<Intent> {
-        var session = audioSessionId()
-        if (session <= 0) {
-            playback.awaitConnected()
-            if (!playerState.value.isPlaying && playerState.value.current != null) {
-                playback.togglePlayPause()
-            } else if (playerState.value.current == null) {
-                val queue = allLibraryItems.value.filter { it.kind == MediaKind.MUSIC }
-                if (queue.isNotEmpty()) {
-                    playback.play(queue, 0)
-                }
-            }
-            // Brief wait for ExoPlayer to publish a session id
-            repeat(20) {
-                kotlinx.coroutines.delay(50)
-                session = audioSessionId()
-                if (session > 0) return@repeat
-            }
-            session = audioSessionId()
-        }
+        val session = ensureAudioSession()
         if (session <= 0) return emptyList()
-        audioEffects.bindSession(session)
         return audioEffects.buildEqualizerIntents(packageName)
+    }
+
+    fun onSystemEqReturned() {
+        audioEffects.restoreAfterSystemPanel()
+        audioEffects.setBandLevels(settings.value.eqBands.toFloatArray())
+        audioEffects.setNightMode(settings.value.nightModeAudio)
+    }
+
+    fun setEqBand(index: Int, value: Float) {
+        viewModelScope.launch {
+            val next = settings.value.eqBands.toMutableList()
+            while (next.size < 5) next.add(0f)
+            if (index in next.indices) next[index] = value.coerceIn(-1f, 1f)
+            audioEffects.setBandLevels(next.toFloatArray())
+            settingsStore.setEqBands(next)
+        }
+    }
+
+    fun applyEqPreset(name: String) {
+        viewModelScope.launch {
+            audioEffects.applyPreset(name)
+            val bands = audioEffects.currentBands().toList()
+            settingsStore.setEqBands(bands)
+        }
+    }
+
+    fun toggleFavoriteCurrent() {
+        val id = playerState.value.current?.id ?: return
+        viewModelScope.launch {
+            library.ensureFavoritesPlaylistId()
+            library.toggleFavorite(id)
+        }
+    }
+
+    fun openFavoritesPlaylist() {
+        viewModelScope.launch {
+            val id = library.ensureFavoritesPlaylistId()
+            activePlaylistId.value = id
+        }
     }
 
     fun toggleTheme() {
@@ -206,6 +287,7 @@ class PlayerViewModel(
         viewModelScope.launch {
             audioEffects.bindSession(audioSessionId())
             audioEffects.setNightMode(enabled)
+            audioEffects.setBandLevels(settings.value.eqBands.toFloatArray())
             settingsStore.setNightModeAudio(enabled)
         }
     }
@@ -216,7 +298,11 @@ class PlayerViewModel(
         if (session <= 0) return
         audioEffects.bindSession(session)
         audioEffects.setNightMode(settings.value.nightModeAudio)
+        audioEffects.setBandLevels(settings.value.eqBands.toFloatArray())
     }
+
+    fun advertiseAudioSession(packageName: String): Intent? =
+        audioEffects.openSessionBroadcast(packageName)
 
     fun toggleTranscription() {
         val current = playerState.value.current ?: return
@@ -272,14 +358,32 @@ class PlayerViewModel(
         libraryFilter.value = transform(libraryFilter.value)
     }
 
+    fun enterSelection(id: String) {
+        _selectionMode.value = true
+        _selectedIds.value = setOf(id)
+    }
+
     fun toggleSelect(id: String) {
+        if (!_selectionMode.value) {
+            enterSelection(id)
+            return
+        }
         _selectedIds.value = _selectedIds.value.toMutableSet().also {
             if (!it.add(id)) it.remove(id)
+        }
+        if (_selectedIds.value.isEmpty()) {
+            _selectionMode.value = false
         }
     }
 
     fun clearSelection() {
         _selectedIds.value = emptySet()
+        _selectionMode.value = false
+    }
+
+    fun selectedMediaItems(): List<MediaItemModel> {
+        val ids = _selectedIds.value
+        return allLibraryItems.value.filter { it.id in ids }
     }
 
     fun renameSelected(title: String) {
@@ -392,10 +496,16 @@ class PlayerViewModel(
     }
 
     fun createPlaylistAndAdd(name: String, mediaId: String) {
+        createPlaylistAndAddAll(name, listOf(mediaId))
+    }
+
+    fun createPlaylistAndAddAll(name: String, mediaIds: List<String>) {
         viewModelScope.launch {
             val trimmed = name.trim().ifEmpty { return@launch }
             val id = library.createPlaylist(trimmed)
-            library.addToPlaylist(id, mediaId, 0)
+            mediaIds.distinct().forEachIndexed { index, mediaId ->
+                library.addToPlaylist(id, mediaId, index)
+            }
         }
     }
 

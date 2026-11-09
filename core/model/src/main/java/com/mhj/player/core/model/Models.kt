@@ -85,6 +85,8 @@ data class AppSettings(
     val sleepTimerMinutes: Int = 0,
     val dialogueClarity: Boolean = false,
     val nightModeAudio: Boolean = false,
+    /** Five in-app EQ band gains in -1f..+1f, applied via android.media.audiofx.Equalizer. */
+    val eqBands: List<Float> = listOf(0f, 0f, 0f, 0f, 0f),
 )
 
 enum class LibrarySort {

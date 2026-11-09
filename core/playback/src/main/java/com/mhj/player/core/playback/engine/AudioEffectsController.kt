@@ -3,90 +3,85 @@ package com.mhj.player.core.playback.engine
 import android.content.Intent
 import android.media.audiofx.AudioEffect
 import android.media.audiofx.BassBoost
-import android.media.audiofx.DynamicsProcessing
 import android.media.audiofx.Equalizer
-import android.media.audiofx.LoudnessEnhancer
-import android.os.Build
 import android.util.Log
 
 /**
- * Real Android AudioEffect chain on the ExoPlayer audio session.
+ * Real Android [Equalizer] + [BassBoost] bound to the ExoPlayer audio session
+ * for the whole time audio is playing. In-app band levels call [Equalizer.setBandLevel].
  */
 class AudioEffectsController {
     private var equalizer: Equalizer? = null
     private var bassBoost: BassBoost? = null
-    private var loudness: LoudnessEnhancer? = null
-    private var dynamics: DynamicsProcessing? = null
     private var sessionId: Int = 0
-    private var dialogueClarity: Boolean = false
     private var nightMode: Boolean = false
+    /** Five normalized band gains in -1f..+1f (mapped onto the device millibel range). */
+    private var bands: FloatArray = FloatArray(BAND_COUNT) { 0f }
+    private var releasedForSystemPanel: Boolean = false
 
     fun bindSession(audioSessionId: Int) {
         if (audioSessionId <= 0) return
-        if (audioSessionId == sessionId && equalizer != null) {
-            apply()
+        if (audioSessionId == sessionId && equalizer != null && !releasedForSystemPanel) {
+            applyBands()
             return
         }
         releaseEffectsOnly()
         sessionId = audioSessionId
+        releasedForSystemPanel = false
         try {
-            equalizer = Equalizer(Int.MAX_VALUE / 2, audioSessionId).apply { enabled = true }
+            equalizer = Equalizer(0, audioSessionId).apply { enabled = true }
         } catch (t: Throwable) {
             Log.w(TAG, "Equalizer unavailable", t)
             equalizer = null
         }
         try {
-            bassBoost = BassBoost(Int.MAX_VALUE / 2, audioSessionId).apply { enabled = false }
+            bassBoost = BassBoost(0, audioSessionId).apply { enabled = false }
         } catch (t: Throwable) {
             Log.w(TAG, "BassBoost unavailable", t)
             bassBoost = null
         }
-        try {
-            loudness = LoudnessEnhancer(audioSessionId).apply { enabled = false }
-        } catch (t: Throwable) {
-            Log.w(TAG, "LoudnessEnhancer unavailable", t)
-            loudness = null
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            try {
-                val cfg = DynamicsProcessing.Config.Builder(
-                    DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION,
-                    1, true, 5, true, 3, false, 0, true,
-                ).build()
-                dynamics = DynamicsProcessing(Int.MAX_VALUE / 2, audioSessionId, cfg).apply {
-                    enabled = false
-                }
-            } catch (t: Throwable) {
-                Log.w(TAG, "DynamicsProcessing unavailable", t)
-                dynamics = null
-            }
-        }
-        apply()
-        // Notify external EQ UIs that a session is active
-        runCatching {
-            // Broadcast is best-effort; some OEMs listen for it
-        }
+        applyBands()
     }
 
     fun currentSessionId(): Int = sessionId
 
-    fun setDialogueClarity(enabled: Boolean) {
-        dialogueClarity = enabled
-        apply()
-    }
-
     fun setNightMode(enabled: Boolean) {
         nightMode = enabled
-        apply()
+        applyBands()
+    }
+
+    fun setBandLevels(normalized: FloatArray) {
+        val copy = FloatArray(BAND_COUNT) { i ->
+            normalized.getOrElse(i) { 0f }.coerceIn(-1f, 1f)
+        }
+        bands = copy
+        applyBands()
+    }
+
+    fun currentBands(): FloatArray = bands.copyOf()
+
+    fun applyPreset(name: String) {
+        bands = when (name.lowercase()) {
+            "bass" -> floatArrayOf(0.75f, 0.45f, 0f, -0.1f, -0.15f)
+            "treble" -> floatArrayOf(-0.2f, -0.05f, 0.15f, 0.45f, 0.7f)
+            "vocal" -> floatArrayOf(-0.25f, 0.15f, 0.55f, 0.35f, 0.05f)
+            "flat" -> FloatArray(BAND_COUNT) { 0f }
+            else -> FloatArray(BAND_COUNT) { 0f }
+        }
+        applyBands()
     }
 
     /**
-     * Opens the system / OEM equalizer for this session.
-     * Also fires OPEN_AUDIO_EFFECT_CONTROL_SESSION so panels attach.
+     * OPEN_SESSION broadcast + DISPLAY panel. Does **not** send CLOSE.
+     * Temporarily releases our Equalizer so OEM panels (MusicFX) can attach
+     * to the live session; caller should [restoreAfterSystemPanel] on resume.
      */
     fun buildEqualizerIntents(packageName: String): List<Intent> {
         val session = sessionId
         if (session <= 0) return emptyList()
+        // Free the session for the system panel — do not CLOSE_AUDIO_EFFECT_CONTROL_SESSION
+        releaseEffectsOnly()
+        releasedForSystemPanel = true
         val openSession = Intent(AudioEffect.ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION).apply {
             putExtra(AudioEffect.EXTRA_AUDIO_SESSION, session)
             putExtra(AudioEffect.EXTRA_PACKAGE_NAME, packageName)
@@ -96,58 +91,69 @@ class AudioEffectsController {
             putExtra(AudioEffect.EXTRA_AUDIO_SESSION, session)
             putExtra(AudioEffect.EXTRA_PACKAGE_NAME, packageName)
             putExtra(AudioEffect.EXTRA_CONTENT_TYPE, AudioEffect.CONTENT_TYPE_MUSIC)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            // No FLAG_ACTIVITY_NEW_TASK — caller is an Activity; NEW_TASK can make MusicFX finish
         }
         return listOf(openSession, display)
     }
 
-    @Deprecated("Use buildEqualizerIntents")
-    fun openSystemEqualizerIntent(packageName: String): Intent? =
-        buildEqualizerIntents(packageName).getOrNull(1)
+    fun restoreAfterSystemPanel() {
+        if (sessionId <= 0) return
+        releasedForSystemPanel = false
+        bindSession(sessionId)
+    }
 
-    private fun apply() {
-        val eq = equalizer
-        if (eq != null) {
-            try {
-                val n = eq.numberOfBands.toInt()
-                val range = eq.bandLevelRange
-                for (i in 0 until n) eq.setBandLevel(i.toShort(), 0)
-                if (dialogueClarity && n >= 3) {
-                    val midLo = (n * 0.30f).toInt().coerceIn(0, n - 1)
-                    val midHi = (n * 0.70f).toInt().coerceIn(0, n - 1)
-                    val lift = (range[1] * 0.55f).toInt().coerceAtMost(range[1].toInt()).toShort()
-                    for (i in midLo..midHi) eq.setBandLevel(i.toShort(), lift)
+    /** Keep session advertised while playing (never paired with CLOSE on open). */
+    fun openSessionBroadcast(packageName: String): Intent? {
+        val session = sessionId
+        if (session <= 0) return null
+        return Intent(AudioEffect.ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION).apply {
+            putExtra(AudioEffect.EXTRA_AUDIO_SESSION, session)
+            putExtra(AudioEffect.EXTRA_PACKAGE_NAME, packageName)
+            putExtra(AudioEffect.EXTRA_CONTENT_TYPE, AudioEffect.CONTENT_TYPE_MUSIC)
+        }
+    }
+
+    private fun applyBands() {
+        val eq = equalizer ?: return
+        try {
+            val n = eq.numberOfBands.toInt().coerceAtLeast(1)
+            val range = eq.bandLevelRange
+            val lo = range[0].toInt()
+            val hi = range[1].toInt()
+            // Map our 5 UI bands onto whatever the device exposes
+            for (i in 0 until n) {
+                val src = if (n == BAND_COUNT) {
+                    bands[i]
+                } else {
+                    val t = i / (n - 1f).coerceAtLeast(1f)
+                    val f = t * (BAND_COUNT - 1)
+                    val a = f.toInt().coerceIn(0, BAND_COUNT - 1)
+                    val b = (a + 1).coerceAtMost(BAND_COUNT - 1)
+                    val frac = f - a
+                    bands[a] * (1f - frac) + bands[b] * frac
                 }
-                if (nightMode && n >= 2) {
-                    val bass = (range[1] * 0.35f).toInt().coerceAtMost(range[1].toInt()).toShort()
-                    val trebleCut = (range[0] * 0.30f).toInt().toShort()
-                    eq.setBandLevel(0, bass)
-                    eq.setBandLevel((n - 1).toShort(), trebleCut)
-                }
-                eq.enabled = true
-            } catch (t: Throwable) {
-                Log.w(TAG, "EQ apply failed", t)
+                var level = (lo + (hi - lo) * ((src + 1f) / 2f)).toInt()
+                if (nightMode && i == 0) level = (level + (hi * 0.25f)).toInt().coerceAtMost(hi)
+                if (nightMode && i == n - 1) level = (level + (lo * 0.2f)).toInt().coerceAtLeast(lo)
+                eq.setBandLevel(i.toShort(), level.toShort())
             }
+            eq.enabled = true
+        } catch (t: Throwable) {
+            Log.w(TAG, "EQ apply failed", t)
         }
         try {
             bassBoost?.let {
-                it.enabled = nightMode
-                if (nightMode) it.setStrength(650.toShort())
+                val bass = bands.getOrElse(0) { 0f }
+                if (nightMode || bass > 0.15f) {
+                    it.enabled = true
+                    val strength = ((if (nightMode) 0.55f else 0f) + bass.coerceAtLeast(0f) * 0.45f)
+                        .coerceIn(0f, 1f)
+                    it.setStrength((strength * 1000).toInt().toShort())
+                } else {
+                    it.enabled = false
+                }
             }
         } catch (_: Throwable) {
-        }
-        try {
-            loudness?.let {
-                it.enabled = dialogueClarity
-                if (dialogueClarity) it.setTargetGain(600)
-            }
-        } catch (_: Throwable) {
-        }
-        if (dynamics != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            try {
-                dynamics?.enabled = nightMode
-            } catch (_: Throwable) {
-            }
         }
     }
 
@@ -156,18 +162,16 @@ class AudioEffectsController {
         equalizer = null
         try { bassBoost?.release() } catch (_: Throwable) {}
         bassBoost = null
-        try { loudness?.release() } catch (_: Throwable) {}
-        loudness = null
-        try { dynamics?.release() } catch (_: Throwable) {}
-        dynamics = null
     }
 
     fun release() {
         releaseEffectsOnly()
         sessionId = 0
+        releasedForSystemPanel = false
     }
 
     companion object {
+        const val BAND_COUNT = 5
         private const val TAG = "AudioEffects"
     }
 }
