@@ -66,7 +66,7 @@ fun EqBoard(
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         Column(modifier.alpha(if (enabled) 1f else 0.45f)) {
             Text(
-                if (active >= 0) "${freqLabel(Eq.FREQS[active])} هرتز   ${Fa.db(local.getOrElse(active) { 0f })} dB" else "بالا و پایین بکشید",
+                if (active >= 0) L.pick("${freqLabel(Eq.FREQS[active])} هرتز   ${Fa.db(local.getOrElse(active) { 0f })} dB", "${freqLabel(Eq.FREQS[active])} Hz   ${Fa.db(local.getOrElse(active) { 0f })} dB") else L.t("بالا و پایین بکشید"),
                 color = if (active >= 0) MhjColors.Gold else c.muted,
                 fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
                 textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(),

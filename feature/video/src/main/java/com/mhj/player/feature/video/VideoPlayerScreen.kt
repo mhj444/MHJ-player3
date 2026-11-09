@@ -177,7 +177,7 @@ fun VideoPlayerScreen(
             (volumeFraction * max).roundToInt().coerceIn(0, max),
             0,
         )
-        showHud(GestureHud.Volume, "صدا " + Fa.num((volumeFraction * 100).roundToInt()) + "٪")
+        showHud(GestureHud.Volume, L.pick("صدا ", "Volume ") + Fa.num((volumeFraction * 100).roundToInt()) + L.pick("٪", "%"))
     }
 
     fun applyBrightnessDelta(deltaY: Float, height: Float) {
@@ -187,14 +187,14 @@ fun VideoPlayerScreen(
         val lp = window.attributes
         lp.screenBrightness = brightnessFraction
         window.attributes = lp
-        showHud(GestureHud.Brightness, "روشنایی " + Fa.num((brightnessFraction * 100).roundToInt()) + "٪")
+        showHud(GestureHud.Brightness, L.pick("روشنایی ", "Brightness ") + Fa.num((brightnessFraction * 100).roundToInt()) + L.pick("٪", "%"))
     }
 
     fun applySeekDelta(deltaX: Float, width: Float) {
         // Finger left→right (positive dx) seeks forward
         val seconds = ((deltaX / width) * 90f) // ~90s full-width
         seekAccumMs += (seconds * 1000f).toLong()
-        showHud(GestureHud.Seek, (if (seekAccumMs >= 0) "جلو " else "عقب ") + Fa.time(kotlin.math.abs(seekAccumMs)))
+        showHud(GestureHud.Seek, (if (seekAccumMs >= 0) L.pick("جلو ", "Forward ") else L.pick("عقب ", "Back ")) + Fa.time(kotlin.math.abs(seekAccumMs)))
     }
 
     LaunchedEffect(hud) {
@@ -325,7 +325,7 @@ fun VideoPlayerScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    state.current?.takeIf { hasVideo }?.title ?: "ویدیو",
+                    state.current?.takeIf { hasVideo }?.title ?: L.t("ویدیو"),
                     color = MhjColors.GoldHi,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 17.sp,
@@ -334,7 +334,7 @@ fun VideoPlayerScreen(
                 )
                 if (hasVideo) {
                     VideoChip(onClick = { onEnterPip() }) {
-                        Icon(Icons.Outlined.PictureInPictureAlt, "پنجرهٔ کوچک", tint = MhjColors.GoldHi, modifier = Modifier.size(21.dp))
+                        Icon(Icons.Outlined.PictureInPictureAlt, L.t("پنجرهٔ کوچک"), tint = MhjColors.GoldHi, modifier = Modifier.size(21.dp))
                     }
                     Spacer(Modifier.width(10.dp))
                 }
@@ -344,7 +344,7 @@ fun VideoPlayerScreen(
                         onPickVideo()
                     },
                 ) {
-                    Icon(Icons.Outlined.VideoLibrary, "باز کردن ویدیو", tint = MhjColors.GoldHi, modifier = Modifier.size(21.dp))
+                    Icon(Icons.Outlined.VideoLibrary, L.t("باز کردن ویدیو"), tint = MhjColors.GoldHi, modifier = Modifier.size(21.dp))
                 }
             }
         }
@@ -354,15 +354,15 @@ fun VideoPlayerScreen(
                 modifier = Modifier.align(Alignment.Center).padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text("فضای ویدیو", color = colors.primary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                Text(L.t("فضای ویدیو"), color = colors.primary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "یک ویدیو انتخاب کنید یا از کتابخانه بزنید",
+                    L.t("یک ویدیو انتخاب کنید یا از کتابخانه بزنید"),
                     color = colors.muted,
                     fontSize = 14.sp,
                 )
                 Spacer(Modifier.height(16.dp))
-                RaisedPill("باز کردن ویدیو") {
+                RaisedPill(L.t("باز کردن ویدیو")) {
                     bumpHide.value.invoke()
                     onPickVideo()
                 }
@@ -399,7 +399,7 @@ fun VideoPlayerScreen(
                             onPlayPause()
                         },
                     ) {
-                        Icon(if (state.isPlaying) Icons.Outlined.Pause else Icons.Outlined.PlayArrow, if (state.isPlaying) "توقف" else "پخش", tint = MhjColors.GoldHi, modifier = Modifier.size(24.dp))
+                        Icon(if (state.isPlaying) Icons.Outlined.Pause else Icons.Outlined.PlayArrow, if (state.isPlaying) L.t("توقف") else L.t("پخش"), tint = MhjColors.GoldHi, modifier = Modifier.size(24.dp))
                     }
                     Spacer(Modifier.width(10.dp))
                     VideoChip(
@@ -408,7 +408,7 @@ fun VideoPlayerScreen(
                             onSeekBy(-10_000)
                         },
                     ) {
-                        Icon(Icons.Outlined.Replay10, "۱۰ ثانیه عقب", tint = MhjColors.GoldHi, modifier = Modifier.size(22.dp))
+                        Icon(Icons.Outlined.Replay10, L.t("۱۰ ثانیه عقب"), tint = MhjColors.GoldHi, modifier = Modifier.size(22.dp))
                     }
                     Spacer(Modifier.width(12.dp))
                     val duration = state.durationMs.coerceAtLeast(0L)
@@ -445,7 +445,7 @@ fun VideoPlayerScreen(
                             onSeekBy(10_000)
                         },
                     ) {
-                        Icon(Icons.Outlined.Forward10, "۱۰ ثانیه جلو", tint = MhjColors.GoldHi, modifier = Modifier.size(22.dp))
+                        Icon(Icons.Outlined.Forward10, L.t("۱۰ ثانیه جلو"), tint = MhjColors.GoldHi, modifier = Modifier.size(22.dp))
                     }
                 }
             }

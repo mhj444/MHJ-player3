@@ -16,9 +16,6 @@ import com.mhj.player.core.model.MediaKind
 import com.mhj.player.core.model.PlayerUiState
 import com.mhj.player.core.model.PlaylistModel
 import com.mhj.player.core.playback.engine.PlaybackController
-import com.mhj.player.core.playback.transcript.TranscriptFileInfo
-import com.mhj.player.core.playback.transcript.TranscriptionController
-import com.mhj.player.core.playback.transcript.TranscriptionUiState
 import com.mhj.player.di.AppContainer
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,13 +35,11 @@ class PlayerViewModel(
     private val settingsStore: SettingsDataStore,
     private val library: LibraryRepository,
     private val scanner: MediaLibraryScanner,
-    private val transcription: TranscriptionController,
 ) : ViewModel() {
 
     val playerState: StateFlow<PlayerUiState> = playback.state
     val settings: StateFlow<AppSettings> = settingsStore.settings
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AppSettings())
-    val transcriptState: StateFlow<TranscriptionUiState> = transcription.state
 
     private val libraryFilter = MutableStateFlow(LibraryFilter())
     val filter: StateFlow<LibraryFilter> = libraryFilter
@@ -211,6 +206,8 @@ class PlayerViewModel(
 
     fun setKeepNaturalPitch(on: Boolean) = viewModelScope.launch { settingsStore.setKeepNaturalPitch(on) }
 
+    fun setEnglishUi(on: Boolean) = viewModelScope.launch { settingsStore.update { it.copy(englishUi = on) } }
+
     fun toggleShowRemaining() = viewModelScope.launch { settingsStore.update { it.copy(showRemaining = !it.showRemaining) } }
 
     fun toggleFavoriteCurrent() {
@@ -239,33 +236,6 @@ class PlayerViewModel(
     }
 
     fun setNightMode(enabled: Boolean) = viewModelScope.launch { settingsStore.setNightModeAudio(enabled) }
-
-    fun toggleTranscription() {
-        val current = playerState.value.current ?: return
-        if (current.uri.isBlank()) return
-        transcription.toggleForMedia(current.id, current.title, current.uri)
-    }
-
-    fun openTranscriptFolder(): Boolean {
-        val current = playerState.value.current
-        return transcription.openViewerFor(current?.id, current?.title)
-    }
-
-    fun dismissTranscriptViewer() = transcription.dismissViewer()
-
-    val transcriptHistory: StateFlow<List<TranscriptFileInfo>> = transcription.history
-    fun refreshTranscripts() = transcription.refreshHistory()
-    fun openSavedTranscript(path: String) {
-        transcription.history.value.firstOrNull { it.path == path }?.let(transcription::openSaved)
-    }
-    fun deleteSavedTranscript(path: String) {
-        transcription.history.value.firstOrNull { it.path == path }?.let(transcription::deleteSaved)
-    }
-    fun readSavedTranscript(path: String): Pair<String, String>? {
-        val info = transcription.history.value.firstOrNull { it.path == path } ?: return null
-        val text = transcription.readSaved(info) ?: return null
-        return info.title to text
-    }
 
     fun bumpSpeed() {
         viewModelScope.launch {
@@ -459,7 +429,7 @@ class PlayerViewModel(
             val fav = pl.name.equals("Favorites", ignoreCase = true)
             com.mhj.player.core.ui.components.PickerPlaylist(
                 id = pl.id,
-                name = if (fav) "علاقه‌مندی‌ها" else pl.name,
+                name = if (fav) L.t("علاقه‌مندی‌ها") else pl.name,
                 count = songs.size,
                 hasAll = mediaIds.isNotEmpty() && mediaIds.all { it in songs },
                 isFavorites = fav,
@@ -515,7 +485,6 @@ class PlayerViewModel(
                         settingsStore = container.settingsStore,
                         library = container.libraryRepository,
                         scanner = container.mediaScanner,
-                        transcription = container.transcription,
                     ) as T
                 }
             }

@@ -35,6 +35,7 @@ class SettingsDataStore(private val context: Context) {
         val eqPreamp = floatPreferencesKey("eq_preamp_db")
         val eqPreset = stringPreferencesKey("eq_preset")
         val showRemaining = booleanPreferencesKey("show_remaining")
+        val englishUi = booleanPreferencesKey("english_ui")
     }
 
     private val playlistOrderKey = stringPreferencesKey("playlist_order")
@@ -89,6 +90,7 @@ class SettingsDataStore(private val context: Context) {
             prefs[Keys.eqPreamp] = next.eqPreamp.coerceIn(-12f, 6f)
             prefs[Keys.eqPreset] = next.eqPreset
             prefs[Keys.showRemaining] = next.showRemaining
+            prefs[Keys.englishUi] = next.englishUi
         }
     }
 
@@ -108,6 +110,7 @@ class SettingsDataStore(private val context: Context) {
         eqPreamp = this[Keys.eqPreamp] ?: 0f,
         eqPreset = this[Keys.eqPreset] ?: "flat",
         showRemaining = this[Keys.showRemaining] ?: false,
+        englishUi = this[Keys.englishUi] ?: false,
     )
 
     private fun parseGains(raw: String?): List<Float> {

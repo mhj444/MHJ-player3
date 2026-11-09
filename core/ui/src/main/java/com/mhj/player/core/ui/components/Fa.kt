@@ -6,7 +6,7 @@ import java.util.Locale
 object Fa {
     private const val DIGITS = "۰۱۲۳۴۵۶۷۸۹"
 
-    fun digits(s: String): String = buildString(s.length) {
+    fun digits(s: String): String = if (com.mhj.player.core.model.L.en) s else buildString(s.length) {
         for (ch in s) append(if (ch in '0'..'9') DIGITS[ch - '0'] else if (ch == '.') '٫' else ch)
     }
 
@@ -41,7 +41,12 @@ object Fa {
         }
     }
 
-    fun minutes(m: Int): String = when {
+    fun minutes(m: Int): String = if (com.mhj.player.core.model.L.en) when {
+        m <= 0 -> "Off"
+        m % 60 == 0 -> "${m / 60} h"
+        m > 60 -> "${m / 60} h ${m % 60} min"
+        else -> "$m min"
+    } else when {
         m <= 0 -> "خاموش"
         m % 60 == 0 -> "${num(m / 60)} ساعت"
         m > 60 -> "${num(m / 60)} ساعت و ${num(m % 60)} دقیقه"

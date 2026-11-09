@@ -98,6 +98,8 @@ data class AppSettings(
     val eqPreset: String = "flat",
     /** Time label next to the bar shows time left instead of elapsed. */
     val showRemaining: Boolean = false,
+    /** Menus in English (left-to-right) instead of Persian. */
+    val englishUi: Boolean = false,
 )
 
 /** The equalizer layout and its ready-made settings. */

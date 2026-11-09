@@ -23,7 +23,7 @@ object MediaShareHelper {
                 type = "text/plain"
                 putExtra(Intent.EXTRA_TEXT, "${item.title}\n${item.uri}")
             }
-            context.startActivity(Intent.createChooser(intent, "اشتراک‌گذاری"))
+            context.startActivity(Intent.createChooser(intent, L.t("اشتراک‌گذاری")))
             return
         }
         val intent = Intent(Intent.ACTION_SEND).apply {
@@ -33,7 +33,7 @@ object MediaShareHelper {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             clipData = android.content.ClipData.newUri(context.contentResolver, item.title, uri)
         }
-        context.startActivity(Intent.createChooser(intent, "اشتراک‌گذاری"))
+        context.startActivity(Intent.createChooser(intent, L.t("اشتراک‌گذاری")))
     }
 
     /** Several songs / videos in one share window (instead of one window per file). */
@@ -52,7 +52,7 @@ object MediaShareHelper {
             uris.drop(1).forEach { clip.addItem(android.content.ClipData.Item(it)) }
             clipData = clip
         }
-        context.startActivity(Intent.createChooser(intent, "اشتراک‌گذاری ${uris.size} فایل"))
+        context.startActivity(Intent.createChooser(intent, L.pick("اشتراک‌گذاری ${uris.size} فایل", "Share ${uris.size} files")))
     }
 
     fun deleteFromDevice(context: Context, item: MediaItemModel): Boolean {

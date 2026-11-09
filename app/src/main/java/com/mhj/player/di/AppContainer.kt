@@ -9,7 +9,6 @@ import com.mhj.player.core.data.repository.PlaybackPersistenceRepository
 import com.mhj.player.core.model.MediaItemModel
 import com.mhj.player.core.model.MediaKind
 import com.mhj.player.core.playback.engine.PlaybackController
-import com.mhj.player.core.playback.transcript.TranscriptionController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -26,7 +25,6 @@ class AppContainer(context: Context) {
     val playbackPersistence = PlaybackPersistenceRepository(db.queueDao(), db.playbackStateDao())
     val playbackController = PlaybackController(appContext, scope)
     val mediaScanner = MediaLibraryScanner(appContext)
-    val transcription = TranscriptionController(appContext, scope)
 
     fun bootstrap() {
         scope.launch {

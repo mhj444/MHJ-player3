@@ -80,15 +80,15 @@ fun PlaylistPickerSheet(
     BackHandler(enabled = visible && backEnabled) { if (creating) creating = false else onDismiss() }
 
     MhjSheet(visible = visible, fromTop = false, heightFraction = 0.80f, onDismiss = onDismiss, hazeState = hazeState) {
-        SheetTitle("افزودن به پلی‌لیست", subtitle)
-        Field(query, { query = it }, "جستجوی پلی‌لیست…", Icons.Outlined.Search)
+        SheetTitle(L.t("افزودن به پلی‌لیست"), subtitle)
+        Field(query, { query = it }, L.t("جستجوی پلی‌لیست…"), Icons.Outlined.Search)
         Spacer(Modifier.height(12.dp))
         if (creating) {
             val focus = remember { FocusRequester() }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.weight(1f)) { Field(newName, { newName = it }, "نام پلی‌لیست تازه", Icons.Outlined.Add, Modifier.focusRequester(focus)) }
+                Box(Modifier.weight(1f)) { Field(newName, { newName = it }, L.t("نام پلی‌لیست تازه"), Icons.Outlined.Add, Modifier.focusRequester(focus)) }
                 Spacer(Modifier.width(10.dp))
-                RaisedIconButton(Icons.Outlined.Check, "ساختن", {
+                RaisedIconButton(Icons.Outlined.Check, L.t("ساختن"), {
                     val n = newName.trim()
                     if (n.isNotEmpty()) onCreate(n)
                 }, size = 48.dp, iconSize = 24.dp, active = newName.isNotBlank())
@@ -116,7 +116,7 @@ fun PlaylistPickerSheet(
                     verticalArrangement = Arrangement.Center,
                 ) {
                     Icon(Icons.Outlined.Add, null, tint = MhjColors.Gold, modifier = Modifier.size(28.dp))
-                    Text("پلی‌لیست تازه", color = if (c.isDark) MhjColors.GoldHi else MhjColors.GoldLo, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    Text(L.t("پلی‌لیست تازه"), color = if (c.isDark) MhjColors.GoldHi else MhjColors.GoldLo, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 }
             }
             items(shown, key = { it.id }) { p ->
@@ -128,16 +128,16 @@ fun PlaylistPickerSheet(
                         }
                         Spacer(Modifier.weight(1f))
                         if (p.hasAll) Box(Modifier.size(22.dp).clip(CircleShape).background(MhjColors.Gold), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Outlined.Check, "از قبل اضافه شده", tint = Color(0xFF111111), modifier = Modifier.size(15.dp))
+                            Icon(Icons.Outlined.Check, L.t("از قبل اضافه شده"), tint = Color(0xFF111111), modifier = Modifier.size(15.dp))
                         }
                     }
                     Spacer(Modifier.height(6.dp))
                     Text(p.name, color = c.onBackground, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("${Fa.num(p.count)} آهنگ", color = c.muted, fontSize = 11.sp)
+                    Text(L.pick("${Fa.num(p.count)} آهنگ", "${p.count} songs"), color = c.muted, fontSize = 11.sp)
                 }
             }
             if (shown.isEmpty() && query.isNotBlank()) item(span = { GridItemSpan(2) }) {
-                Text("پلی‌لیستی با این نام نیست", color = c.muted, fontSize = 13.sp, modifier = Modifier.padding(12.dp))
+                Text(L.t("پلی‌لیستی با این نام نیست"), color = c.muted, fontSize = 13.sp, modifier = Modifier.padding(12.dp))
             }
         }
     }

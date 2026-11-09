@@ -29,7 +29,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.QueueMusic
-import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.DarkMode
@@ -39,6 +39,7 @@ import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -75,7 +76,7 @@ import com.mhj.player.core.ui.theme.MhjColors
 import com.mhj.player.core.ui.theme.MhjTheme
 import dev.chrisbanes.haze.HazeState
 
-private enum class TopPage { ROOT, LIBRARY, PLAYLISTS, FAVORITES, THEME, PLAYLIST_DETAIL }
+private enum class TopPage { ROOT, LIBRARY, PLAYLISTS, FAVORITES, THEME, LANGUAGE, PLAYLIST_DETAIL }
 
 @Composable
 fun TopMenuDrawer(
@@ -115,6 +116,7 @@ fun TopMenuDrawer(
     onDeleteSelectedAsk: () -> Unit = {},
     onOpenFavorites: () -> Unit = {},
     onRenamePlaylist: (Long, String) -> Unit = { _, _ -> },
+    onSetEnglish: (Boolean) -> Unit = {},
     onDeletePlaylist: (Long) -> Unit = {},
     onReorderPlaylists: (List<Long>) -> Unit = {},
     backEnabled: Boolean = true,
@@ -142,7 +144,7 @@ fun TopMenuDrawer(
     MhjSheet(
         visible = visible,
         fromTop = true,
-        heightFraction = if (page == TopPage.ROOT || page == TopPage.THEME) 0.62f else 0.92f,
+        heightFraction = when (page) { TopPage.ROOT -> 0.70f; TopPage.THEME, TopPage.LANGUAGE -> 0.50f; else -> 0.92f },
         onDismiss = onDismiss,
         modifier = modifier,
         hazeState = hazeState,
@@ -152,14 +154,15 @@ fun TopMenuDrawer(
                 BrandLogoHeader()
                 Spacer(Modifier.height(16.dp))
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 4.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    FeatureRow(Icons.Outlined.LibraryMusic, "کتابخانه", "همهٔ آهنگ‌ها و ویدیوهای گوشی", onClick = { page = TopPage.LIBRARY }) { Chevron() }
-                    FeatureRow(Icons.AutoMirrored.Outlined.QueueMusic, "پلی‌لیست‌ها", "فهرست‌های خودتان و فهرست‌های خودکار", onClick = { page = TopPage.PLAYLISTS }) { Chevron() }
-                    FeatureRow(Icons.Outlined.FavoriteBorder, "علاقه‌مندی‌ها", "آهنگ‌هایی که قلب زده‌اید", onClick = {
+                    FeatureRow(Icons.Outlined.LibraryMusic, L.t("کتابخانه"), L.t("همهٔ آهنگ‌ها و ویدیوهای گوشی"), onClick = { page = TopPage.LIBRARY }) { Chevron() }
+                    FeatureRow(Icons.AutoMirrored.Outlined.QueueMusic, L.t("پلی‌لیست‌ها"), L.t("فهرست‌های خودتان و فهرست‌های خودکار"), onClick = { page = TopPage.PLAYLISTS }) { Chevron() }
+                    FeatureRow(Icons.Outlined.FavoriteBorder, L.t("علاقه‌مندی‌ها"), L.t("آهنگ‌هایی که قلب زده‌اید"), onClick = {
                         playlistReturn = TopPage.ROOT
                         onOpenFavorites()
                         page = TopPage.PLAYLIST_DETAIL
                     }) { Chevron() }
-                    FeatureRow(Icons.Outlined.Palette, "ظاهر", if (settings.theme == AppTheme.MIDNIGHT_GOLD) "شب طلایی" else "سفید چینی", onClick = { page = TopPage.THEME }) { Chevron() }
+                    FeatureRow(Icons.Outlined.Palette, L.t("ظاهر"), if (settings.theme == AppTheme.MIDNIGHT_GOLD) L.t("شب طلایی") else L.t("سفید چینی"), onClick = { page = TopPage.THEME }) { Chevron() }
+                    FeatureRow(Icons.Outlined.Translate, L.t("زبان منوها"), if (settings.englishUi) "English" else "فارسی", onClick = { page = TopPage.LANGUAGE }) { Chevron() }
                 }
             }
             TopPage.LIBRARY -> LibraryPage(
@@ -217,14 +220,26 @@ fun TopMenuDrawer(
                 onShare = onSharePlaylistTrack,
                 onAddToPlaylistAsk = onAddPlaylistTrackToPlaylistAsk,
             )
-            TopPage.THEME -> {
-                SheetTitle("ظاهر", "رنگ‌بندی برنامه", { page = TopPage.ROOT })
+            TopPage.LANGUAGE -> {
+                SheetTitle(L.t("زبان منوها"), "Menu language", { page = TopPage.ROOT })
                 Spacer(Modifier.height(8.dp))
                 Column(Modifier.padding(horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    FeatureRow(Icons.Outlined.DarkMode, "شب طلایی", "زمینهٔ تیره با طلایی", onClick = { if (settings.theme != AppTheme.MIDNIGHT_GOLD) onToggleTheme() }) {
+                    FeatureRow(Icons.Outlined.Translate, "فارسی", "منوها به فارسی، راست‌به‌چپ", onClick = { if (settings.englishUi) onSetEnglish(false) }) {
+                        GoldSwitch(!settings.englishUi, onChange = { if (settings.englishUi) onSetEnglish(false) })
+                    }
+                    FeatureRow(Icons.Outlined.Translate, "English", "English menus, left-to-right", onClick = { if (!settings.englishUi) onSetEnglish(true) }) {
+                        GoldSwitch(settings.englishUi, onChange = { if (!settings.englishUi) onSetEnglish(true) })
+                    }
+                }
+            }
+            TopPage.THEME -> {
+                SheetTitle(L.t("ظاهر"), L.t("رنگ‌بندی برنامه"), { page = TopPage.ROOT })
+                Spacer(Modifier.height(8.dp))
+                Column(Modifier.padding(horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    FeatureRow(Icons.Outlined.DarkMode, L.t("شب طلایی"), L.t("زمینهٔ تیره با طلایی"), onClick = { if (settings.theme != AppTheme.MIDNIGHT_GOLD) onToggleTheme() }) {
                         GoldSwitch(settings.theme == AppTheme.MIDNIGHT_GOLD, onChange = { if (settings.theme != AppTheme.MIDNIGHT_GOLD) onToggleTheme() })
                     }
-                    FeatureRow(Icons.Outlined.LightMode, "سفید چینی", "زمینهٔ روشن کرم با طلایی", onClick = { if (settings.theme != AppTheme.PORCELAIN_WHITE) onToggleTheme() }) {
+                    FeatureRow(Icons.Outlined.LightMode, L.t("سفید چینی"), L.t("زمینهٔ روشن کرم با طلایی"), onClick = { if (settings.theme != AppTheme.PORCELAIN_WHITE) onToggleTheme() }) {
                         GoldSwitch(settings.theme == AppTheme.PORCELAIN_WHITE, onChange = { if (settings.theme != AppTheme.PORCELAIN_WHITE) onToggleTheme() })
                     }
                 }
@@ -257,12 +272,12 @@ private fun ColumnScope.LibraryPage(
     onAddSelectedToPlaylist: () -> Unit,
     onDeleteSelectedAsk: () -> Unit,
 ) {
-    SheetTitle("کتابخانه", "${Fa.num(items.size)} مورد", onBack)
+    SheetTitle(L.t("کتابخانه"), L.pick("${Fa.num(items.size)} مورد", "${items.size} items"), onBack)
     Spacer(Modifier.height(8.dp))
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        RaisedPill("افزودن فایل", onClick = onAddMusic)
-        RaisedPill(if (scanning) "در حال جستجو…" else "جستجوی گوشی", onClick = { if (!scanning) onScanDevice() })
-        RaisedPill("افزودن پوشه", onClick = onImportFolder)
+        RaisedPill(L.t("افزودن فایل"), onClick = onAddMusic)
+        RaisedPill(if (scanning) L.t("در حال جستجو…") else L.t("جستجوی گوشی"), onClick = { if (!scanning) onScanDevice() })
+        RaisedPill(L.t("افزودن پوشه"), onClick = onImportFolder)
     }
     Spacer(Modifier.height(8.dp))
     BasicTextField(
@@ -278,20 +293,20 @@ private fun ColumnScope.LibraryPage(
             .padding(horizontal = 12.dp, vertical = 12.dp),
         decorationBox = { inner ->
             if (filter.query.isEmpty()) {
-                Text("جستجوی نام، خواننده، آلبوم، پوشه…", color = MhjTheme.colors.muted, fontSize = 13.sp)
+                Text(L.t("جستجوی نام، خواننده، آلبوم، پوشه…"), color = MhjTheme.colors.muted, fontSize = 13.sp)
             }
             inner()
         },
     )
     Spacer(Modifier.height(8.dp))
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        FilterChip("همه", filter.kind == null) { onUpdateFilter { it.copy(kind = null) } }
-        FilterChip("موسیقی", filter.kind == MediaKind.MUSIC) { onUpdateFilter { it.copy(kind = MediaKind.MUSIC) } }
-        FilterChip("ویدیو", filter.kind == MediaKind.VIDEO) { onUpdateFilter { it.copy(kind = MediaKind.VIDEO) } }
-        FilterChip("پخش‌شده", filter.playedOnly == true) {
+        FilterChip(L.t("همه"), filter.kind == null) { onUpdateFilter { it.copy(kind = null) } }
+        FilterChip(L.t("موسیقی"), filter.kind == MediaKind.MUSIC) { onUpdateFilter { it.copy(kind = MediaKind.MUSIC) } }
+        FilterChip(L.t("ویدیو"), filter.kind == MediaKind.VIDEO) { onUpdateFilter { it.copy(kind = MediaKind.VIDEO) } }
+        FilterChip(L.t("پخش‌شده"), filter.playedOnly == true) {
             onUpdateFilter { it.copy(playedOnly = if (it.playedOnly == true) null else true) }
         }
-        FilterChip("پخش‌نشده", filter.playedOnly == false) {
+        FilterChip(L.t("پخش‌نشده"), filter.playedOnly == false) {
             onUpdateFilter { it.copy(playedOnly = if (it.playedOnly == false) null else false) }
         }
     }
@@ -367,7 +382,7 @@ private fun ColumnScope.LibraryPage(
                             overflow = TextOverflow.Ellipsis,
                         )
                         Text(
-                            listOf(artistLabel(item.artist), if (item.kind == MediaKind.VIDEO) "ویدیو" else "موسیقی", item.format).filter { it.isNotBlank() }.joinToString(" · "),
+                            listOf(artistLabel(item.artist), if (item.kind == MediaKind.VIDEO) L.t("ویدیو") else L.t("موسیقی"), item.format).filter { it.isNotBlank() }.joinToString(" · "),
                             color = MhjTheme.colors.muted,
                             fontSize = 11.sp,
                             maxLines = 1,
@@ -377,7 +392,7 @@ private fun ColumnScope.LibraryPage(
                     if (!selectionMode) {
                         Box {
                             Icon(
-                                Icons.Outlined.MoreVert, "بیشتر", tint = MhjColors.Gold,
+                                Icons.Outlined.MoreVert, L.t("بیشتر"), tint = MhjColors.Gold,
                                 modifier = Modifier.clip(CircleShape).clickable { menuOpen = true }.padding(8.dp).size(22.dp),
                             )
                             androidx.compose.material3.DropdownMenu(
@@ -385,19 +400,19 @@ private fun ColumnScope.LibraryPage(
                                 onDismissRequest = { menuOpen = false },
                             ) {
                                 androidx.compose.material3.DropdownMenuItem(
-                                    text = { Text("اشتراک‌گذاری") },
+                                    text = { Text(L.t("اشتراک‌گذاری")) },
                                     onClick = { menuOpen = false; onShareItem(item) },
                                 )
                                 androidx.compose.material3.DropdownMenuItem(
-                                    text = { Text("حذف از دستگاه") },
+                                    text = { Text(L.t("حذف از دستگاه")) },
                                     onClick = { menuOpen = false; onDeleteItemAsk(item) },
                                 )
                                 androidx.compose.material3.DropdownMenuItem(
-                                    text = { Text("افزودن به پلی‌لیست") },
+                                    text = { Text(L.t("افزودن به پلی‌لیست")) },
                                     onClick = { menuOpen = false; onAddItemToPlaylistAsk(item) },
                                 )
                                 androidx.compose.material3.DropdownMenuItem(
-                                    text = { Text("تغییر نام") },
+                                    text = { Text(L.t("تغییر نام")) },
                                     onClick = { menuOpen = false; onRenameItemAsk(item) },
                                 )
                             }
@@ -420,19 +435,19 @@ private fun ColumnScope.LibraryPage(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    "اشتراک (${selectedIds.size})",
+                    L.pick("اشتراک (${Fa.num(selectedIds.size)})", "Share (${selectedIds.size})"),
                     color = MhjColors.GoldHi,
                     fontSize = 13.sp,
                     modifier = Modifier.clickable(onClick = onShareSelected),
                 )
                 Text(
-                    "پلی‌لیست",
+                    L.t("پلی‌لیست"),
                     color = MhjColors.GoldHi,
                     fontSize = 13.sp,
                     modifier = Modifier.clickable(onClick = onAddSelectedToPlaylist),
                 )
                 Text(
-                    "حذف",
+                    L.t("حذف"),
                     color = Color(0xFFFF8A80),
                     fontSize = 13.sp,
                     modifier = Modifier.clickable(onClick = onDeleteSelectedAsk),
@@ -468,7 +483,7 @@ private fun ColumnScope.PlaylistsPage(
     val byId = playlists.associateBy { it.id }
     val rowStepPx = with(LocalDensity.current) { (68 + 12).dp.toPx() }
 
-    SheetTitle("پلی‌لیست‌ها", "برای ویرایش، حذف یا جابه‌جایی، روی پلی‌لیست انگشت نگه دارید", onBack)
+    SheetTitle(L.t("پلی‌لیست‌ها"), L.t("برای ویرایش، حذف یا جابه‌جایی، روی پلی‌لیست انگشت نگه دارید"), onBack)
     Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         BasicTextField(
             value = newName,
@@ -478,12 +493,12 @@ private fun ColumnScope.PlaylistsPage(
             cursorBrush = SolidColor(MhjColors.Gold),
             modifier = Modifier.weight(1f).clip(RoundedCornerShape(14.dp)).background(c.recess).padding(horizontal = 12.dp, vertical = 13.dp),
             decorationBox = { inner ->
-                if (newName.isEmpty()) Text("نام پلی‌لیست تازه…", color = c.muted, fontSize = 13.sp)
+                if (newName.isEmpty()) Text(L.t("نام پلی‌لیست تازه…"), color = c.muted, fontSize = 13.sp)
                 inner()
             },
         )
         Spacer(Modifier.width(10.dp))
-        RaisedIconButton(Icons.Outlined.Add, "ساختن", {
+        RaisedIconButton(Icons.Outlined.Add, L.t("ساختن"), {
             if (newName.isNotBlank()) { onCreatePlaylist(newName); newName = "" }
         }, size = 46.dp, iconSize = 22.dp, active = newName.isNotBlank())
     }
@@ -495,10 +510,10 @@ private fun ColumnScope.PlaylistsPage(
         contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp, 6.dp),
     ) {
         items(builtIn, key = { "s${it.id}" }) { pl ->
-            FeatureRow(Icons.Outlined.AutoAwesome, playlistTitle(pl), "خودکار", Modifier.height(68.dp), onClick = { onOpenPlaylist(pl.id) }) { Chevron() }
+            FeatureRow(Icons.Outlined.AutoAwesome, playlistTitle(pl), L.t("خودکار"), Modifier.height(68.dp), onClick = { onOpenPlaylist(pl.id) }) { Chevron() }
         }
         if (mine.isEmpty()) item(key = "empty") {
-            Text("هنوز پلی‌لیستی نساخته‌اید؛ نام بنویسید و + را بزنید.", color = c.muted, fontSize = 13.sp, modifier = Modifier.padding(8.dp))
+            Text(L.t("هنوز پلی‌لیستی نساخته‌اید؛ نام بنویسید و + را بزنید."), color = c.muted, fontSize = 13.sp, modifier = Modifier.padding(8.dp))
         }
         items(mine.mapNotNull { byId[it] }, key = { it.id }) { pl ->
             val dragging = draggingId == pl.id
@@ -536,17 +551,17 @@ private fun ColumnScope.PlaylistsPage(
                         },
                     ),
             ) {
-                FeatureRow(Icons.AutoMirrored.Outlined.QueueMusic, pl.name, "پلی‌لیست شما", Modifier.height(68.dp)) {
+                FeatureRow(Icons.AutoMirrored.Outlined.QueueMusic, pl.name, L.t("پلی‌لیست شما"), Modifier.height(68.dp)) {
                     Box {
                         Icon(
-                            Icons.Outlined.MoreVert, "بیشتر", tint = MhjColors.Gold,
+                            Icons.Outlined.MoreVert, L.t("بیشتر"), tint = MhjColors.Gold,
                             modifier = Modifier.clip(CircleShape).clickable { menuFor = pl }.padding(8.dp).size(22.dp),
                         )
                         androidx.compose.material3.DropdownMenu(expanded = menuFor?.id == pl.id, onDismissRequest = { menuFor = null }) {
-                            androidx.compose.material3.DropdownMenuItem(text = { Text("تغییر نام") }, onClick = {
+                            androidx.compose.material3.DropdownMenuItem(text = { Text(L.t("تغییر نام")) }, onClick = {
                                 menuFor = null; renameFor = pl; renameText = pl.name
                             })
-                            androidx.compose.material3.DropdownMenuItem(text = { Text("حذف پلی‌لیست", color = Color(0xFFE57373)) }, onClick = {
+                            androidx.compose.material3.DropdownMenuItem(text = { Text(L.t("حذف پلی‌لیست"), color = Color(0xFFE57373)) }, onClick = {
                                 menuFor = null; deleteFor = pl
                             })
                         }
@@ -558,27 +573,27 @@ private fun ColumnScope.PlaylistsPage(
     renameFor?.let { pl ->
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { renameFor = null },
-            title = { Text("تغییر نام پلی‌لیست") },
+            title = { Text(L.t("تغییر نام پلی‌لیست")) },
             text = {
-                androidx.compose.material3.OutlinedTextField(renameText, { renameText = it }, singleLine = true, label = { Text("نام تازه") })
+                androidx.compose.material3.OutlinedTextField(renameText, { renameText = it }, singleLine = true, label = { Text(L.t("نام تازه")) })
             },
-            dismissButton = { androidx.compose.material3.TextButton(onClick = { renameFor = null }) { Text("انصراف") } },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { renameFor = null }) { Text(L.t("انصراف")) } },
             confirmButton = {
                 androidx.compose.material3.TextButton(onClick = {
                     if (renameText.isNotBlank()) onRename(pl.id, renameText.trim())
                     renameFor = null
-                }) { Text("ذخیره") }
+                }) { Text(L.t("ذخیره")) }
             },
         )
     }
     deleteFor?.let { pl ->
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { deleteFor = null },
-            title = { Text("حذف پلی‌لیست") },
-            text = { Text("پلی‌لیست «${pl.name}» پاک شود؟ خود آهنگ‌ها از گوشی پاک نمی‌شوند.") },
-            dismissButton = { androidx.compose.material3.TextButton(onClick = { deleteFor = null }) { Text("انصراف") } },
+            title = { Text(L.t("حذف پلی‌لیست")) },
+            text = { Text(L.pick("پلی‌لیست «${pl.name}» پاک شود؟ خود آهنگ‌ها از گوشی پاک نمی‌شوند.", "Delete playlist “${pl.name}”? The songs stay on the phone.")) },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { deleteFor = null }) { Text(L.t("انصراف")) } },
             confirmButton = {
-                androidx.compose.material3.TextButton(onClick = { onDelete(pl.id); deleteFor = null }) { Text("حذف", color = Color(0xFFE57373)) }
+                androidx.compose.material3.TextButton(onClick = { onDelete(pl.id); deleteFor = null }) { Text(L.t("حذف"), color = Color(0xFFE57373)) }
             },
         )
     }
@@ -613,19 +628,19 @@ private fun ColumnScope.PlaylistDetailPage(
 
     SheetTitle(
         playlistTitle(playlist),
-        "${Fa.num(tracks.size)} مورد" + if (playlist.isSmart) " · خودکار" else "",
+        L.pick("${Fa.num(tracks.size)} مورد", "${tracks.size} items") + if (playlist.isSmart) L.pick(" · خودکار", " · automatic") else "",
         onBack,
     )
     Spacer(Modifier.height(4.dp))
     Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-        RaisedPill("پخش همه") { onPlayAll(id) }
+        RaisedPill(L.t("پخش همه")) { onPlayAll(id) }
         if (canReorder && tracks.size > 1) {
-            Text("برای جابه‌جایی، روی آهنگ انگشت نگه دارید و بکشید", color = MhjTheme.colors.muted, fontSize = 11.sp)
+            Text(L.t("برای جابه‌جایی، روی آهنگ انگشت نگه دارید و بکشید"), color = MhjTheme.colors.muted, fontSize = 11.sp)
         }
     }
     Spacer(Modifier.height(6.dp))
     if (orderedTracks.isEmpty()) {
-        Text("این پلی‌لیست خالی است", color = MhjTheme.colors.muted, fontSize = 13.sp, modifier = Modifier.padding(8.dp))
+        Text(L.t("این پلی‌لیست خالی است"), color = MhjTheme.colors.muted, fontSize = 13.sp, modifier = Modifier.padding(8.dp))
         return
     }
     LazyColumn(
@@ -702,15 +717,15 @@ private fun ColumnScope.PlaylistDetailPage(
                 }
                 Box {
                     Icon(
-                        Icons.Outlined.MoreVert, "بیشتر", tint = MhjColors.Gold,
+                        Icons.Outlined.MoreVert, L.t("بیشتر"), tint = MhjColors.Gold,
                         modifier = Modifier.clip(CircleShape).clickable { menuOpen = true }.padding(8.dp).size(22.dp),
                     )
                     androidx.compose.material3.DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                        androidx.compose.material3.DropdownMenuItem(text = { Text("افزودن به پلی‌لیست") }, onClick = { menuOpen = false; onAddToPlaylistAsk(item) })
+                        androidx.compose.material3.DropdownMenuItem(text = { Text(L.t("افزودن به پلی‌لیست")) }, onClick = { menuOpen = false; onAddToPlaylistAsk(item) })
                         if (canReorder) {
-                            androidx.compose.material3.DropdownMenuItem(text = { Text("حذف از این پلی‌لیست") }, onClick = { menuOpen = false; onRemove(id, item.id) })
+                            androidx.compose.material3.DropdownMenuItem(text = { Text(L.t("حذف از این پلی‌لیست")) }, onClick = { menuOpen = false; onRemove(id, item.id) })
                         }
-                        androidx.compose.material3.DropdownMenuItem(text = { Text("اشتراک‌گذاری") }, onClick = { menuOpen = false; onShare(item) })
+                        androidx.compose.material3.DropdownMenuItem(text = { Text(L.t("اشتراک‌گذاری")) }, onClick = { menuOpen = false; onShare(item) })
                     }
                 }
             }
@@ -721,35 +736,35 @@ private fun ColumnScope.PlaylistDetailPage(
 /** "<unknown>" and empty artists read as «خوانندهٔ نامشخص». */
 fun artistLabel(a: String?): String {
     val t = a?.trim().orEmpty()
-    return if (t.isEmpty() || t.equals("<unknown>", true) || t.equals("unknown artist", true) || t.equals("unknown", true)) "خوانندهٔ نامشخص" else t
+    return if (t.isEmpty() || t.equals("<unknown>", true) || t.equals("unknown artist", true) || t.equals("unknown", true)) L.t("خوانندهٔ نامشخص") else t
 }
 
 @Composable
 private fun Chevron() {
-    Icon(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, null, tint = MhjColors.Gold, modifier = Modifier.size(24.dp))
+    Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, null, tint = MhjColors.Gold, modifier = Modifier.size(24.dp))
 }
 
 private fun playlistTitle(p: PlaylistModel?): String {
-    val n = p?.name ?: return "پلی‌لیست"
+    val n = p?.name ?: return L.t("پلی‌لیست")
     return when (n.trim().lowercase()) {
-        "favorites" -> "علاقه‌مندی‌ها"
-        "newest" -> "تازه‌ها"
-        "not played recently" -> "مدتی پخش‌نشده"
-        "most played" -> "پرپخش‌ترین"
+        "favorites" -> L.t("علاقه‌مندی‌ها")
+        "newest" -> L.t("تازه‌ها")
+        "not played recently" -> L.t("مدتی پخش‌نشده")
+        "most played" -> L.t("پرپخش‌ترین")
         else -> n
     }
 }
 
 private fun sortName(s: LibrarySort): String = when (s.name) {
-    "NAME" -> "نام"
-    "ARTIST" -> "خواننده"
-    "ALBUM" -> "آلبوم"
-    "DATE_ADDED" -> "تاریخ افزودن"
-    "DURATION" -> "مدت"
-    "PLAY_COUNT" -> "تعداد پخش"
-    "LAST_PLAYED" -> "آخرین پخش"
-    "FOLDER" -> "پوشه"
-    "FORMAT" -> "قالب"
+    "NAME" -> L.t("نام")
+    "ARTIST" -> L.t("خواننده")
+    "ALBUM" -> L.t("آلبوم")
+    "DATE_ADDED" -> L.t("تاریخ افزودن")
+    "DURATION" -> L.t("مدت")
+    "PLAY_COUNT" -> L.t("تعداد پخش")
+    "LAST_PLAYED" -> L.t("آخرین پخش")
+    "FOLDER" -> L.t("پوشه")
+    "FORMAT" -> L.t("قالب")
     else -> s.name.lowercase().replace('_', ' ')
 }
 

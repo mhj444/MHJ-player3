@@ -274,20 +274,20 @@ private fun ColumnScope.Controls(
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(
-                item?.title ?: "آهنگی پخش نمی‌شود",
+                item?.title ?: L.t("آهنگی پخش نمی‌شود"),
                 color = c.onBackground, fontSize = 21.sp, fontWeight = FontWeight.Bold,
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
             Text(
                 item?.let { listOf(artistLabel(it.artist), it.album).filter { s -> s.isNotBlank() && s != "<unknown>" }.joinToString(" — ") }
-                    ?: "روی لوگو بزنید و یک آهنگ انتخاب کنید",
+                    ?: L.t("روی لوگو بزنید و یک آهنگ انتخاب کنید"),
                 color = c.muted, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
         }
         Spacer(Modifier.width(10.dp))
         RaisedIconButton(
             if (isFavorite) Icons.Outlined.Favorite else Icons.Outlined.FavoriteBorder,
-            if (isFavorite) "برداشتن از علاقه‌مندی‌ها" else "افزودن به علاقه‌مندی‌ها",
+            if (isFavorite) L.t("برداشتن از علاقه‌مندی‌ها") else L.t("افزودن به علاقه‌مندی‌ها"),
             onToggleFavorite, size = 46.dp, iconSize = 22.dp, enabled = item != null,
             tint = if (isFavorite) Color(0xFFE0475B) else null,
         )
@@ -300,16 +300,16 @@ private fun ColumnScope.Controls(
     // Buttons: always left-to-right (previous on the left), like every player.
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            RaisedIconButton(Icons.Outlined.Shuffle, "پخش درهم", onShuffle, size = 46.dp, iconSize = 21.dp, active = state.shuffle)
-            RaisedIconButton(Icons.Outlined.SkipPrevious, "قبلی", onPrevious, size = 58.dp, iconSize = 30.dp)
+            RaisedIconButton(Icons.Outlined.Shuffle, L.t("پخش درهم"), onShuffle, size = 46.dp, iconSize = 21.dp, active = state.shuffle)
+            RaisedIconButton(Icons.Outlined.SkipPrevious, L.t("قبلی"), onPrevious, size = 58.dp, iconSize = 30.dp)
             PlayButton(state.isPlaying, state.isBuffering, onPlayPause)
-            RaisedIconButton(Icons.Outlined.SkipNext, "بعدی", onNext, size = 58.dp, iconSize = 30.dp)
+            RaisedIconButton(Icons.Outlined.SkipNext, L.t("بعدی"), onNext, size = 58.dp, iconSize = 30.dp)
             RaisedIconButton(
                 if (state.repeatMode == com.mhj.player.core.model.RepeatMode.ONE) Icons.Outlined.RepeatOne else Icons.Outlined.Repeat,
                 when (state.repeatMode) {
-                    com.mhj.player.core.model.RepeatMode.OFF -> "تکرار خاموش"
-                    com.mhj.player.core.model.RepeatMode.ONE -> "تکرار یک آهنگ"
-                    com.mhj.player.core.model.RepeatMode.ALL -> "تکرار همه"
+                    com.mhj.player.core.model.RepeatMode.OFF -> L.t("تکرار خاموش")
+                    com.mhj.player.core.model.RepeatMode.ONE -> L.t("تکرار یک آهنگ")
+                    com.mhj.player.core.model.RepeatMode.ALL -> L.t("تکرار همه")
                 },
                 onRepeat, size = 46.dp, iconSize = 21.dp, active = state.repeatMode != com.mhj.player.core.model.RepeatMode.OFF,
             )
@@ -331,7 +331,7 @@ private fun ColumnScope.Controls(
         Icon(Icons.Outlined.GraphicEq, null, tint = MhjColors.Gold, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(8.dp))
         Text(
-            "پردازش صدا" + if (kotlin.math.abs(speed - 1f) > 0.01f) "  ·  " + Fa.speed(speed) else "",
+            L.t("پردازش صدا") + if (kotlin.math.abs(speed - 1f) > 0.01f) "  ·  " + Fa.speed(speed) else "",
             color = c.onBackground, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
         )
         Spacer(Modifier.width(6.dp))
@@ -373,7 +373,7 @@ private fun PlayButton(playing: Boolean, buffering: Boolean, onClick: () -> Unit
         ) {
             Icon(
                 if (playing) Icons.Outlined.Pause else Icons.Outlined.PlayArrow,
-                if (playing) "توقف" else "پخش",
+                if (playing) L.t("توقف") else L.t("پخش"),
                 tint = MhjColors.GoldHi,
                 modifier = Modifier.size(42.dp),
             )

@@ -289,7 +289,7 @@ fun SheetTitle(title: String, subtitle: String? = null, onBack: (() -> Unit)? = 
     val c = MhjTheme.colors
     Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
         if (onBack != null) {
-            RaisedIconButton(Icons.AutoMirrored.Outlined.ArrowBack, "برگشت", onBack, size = 40.dp, iconSize = 20.dp)
+            RaisedIconButton(Icons.AutoMirrored.Outlined.ArrowBack, L.t("برگشت"), onBack, size = 40.dp, iconSize = 20.dp)
             Spacer(Modifier.width(12.dp))
         }
         Column(Modifier.weight(1f)) {

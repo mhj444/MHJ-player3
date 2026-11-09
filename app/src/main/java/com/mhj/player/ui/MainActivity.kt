@@ -62,11 +62,7 @@ import com.mhj.player.core.ui.components.PickerPlaylist
 import com.mhj.player.core.ui.components.PlaylistPickerSheet
 import androidx.compose.runtime.produceState
 import com.mhj.player.core.ui.components.BottomAudioDrawer
-import com.mhj.player.core.ui.components.SavedTranscript
-import com.mhj.player.core.ui.components.TranscriptUi
-import com.mhj.player.core.ui.components.shareText
 import com.mhj.player.core.ui.components.TopMenuDrawer
-import com.mhj.player.core.ui.components.TranscriptViewerOverlay
 import com.mhj.player.core.ui.gestures.playerEdgeSwipes
 import com.mhj.player.core.ui.theme.MhjPlayerTheme
 import com.mhj.player.core.ui.theme.MhjTheme
@@ -125,7 +121,7 @@ class MainActivity : ComponentActivity() {
 
     fun enterPip() {
         if (!packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) {
-            Toast.makeText(this, "این گوشی پنجرهٔ کوچک ندارد", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, L.t("این گوشی پنجرهٔ کوچک ندارد"), Toast.LENGTH_SHORT).show()
             return
         }
         runCatching { enterPictureInPictureMode(pipParams()) }
@@ -163,12 +159,21 @@ class MainActivity : ComponentActivity() {
                     window.statusBarColor = Color.Transparent.toArgb()
                     window.navigationBarColor = Color.Transparent.toArgb()
                 }
-                PlayerRoot(
-                    viewModel = viewModel,
-                    inPip = inPip.value,
-                    onEnterPip = ::enterPip,
-                    onPipEligible = ::setPipEligible,
-                )
+                // Language: Persian = right-to-left, English = left-to-right. Changing it rebuilds the screens.
+                com.mhj.player.core.model.L.en = settings.englishUi
+                androidx.compose.runtime.CompositionLocalProvider(
+                    androidx.compose.ui.platform.LocalLayoutDirection provides
+                        if (settings.englishUi) androidx.compose.ui.unit.LayoutDirection.Ltr else androidx.compose.ui.unit.LayoutDirection.Rtl,
+                ) {
+                    androidx.compose.runtime.key(settings.englishUi) {
+                        PlayerRoot(
+                            viewModel = viewModel,
+                            inPip = inPip.value,
+                            onEnterPip = ::enterPip,
+                            onPipEligible = ::setPipEligible,
+                        )
+                    }
+                }
             }
         }
     }
@@ -218,8 +223,6 @@ private fun PlayerRoot(
     val selectedIds by viewModel.selectedIds.collectAsStateWithLifecycle()
     val selectionMode by viewModel.selectionMode.collectAsStateWithLifecycle()
     val scanning by viewModel.scanning.collectAsStateWithLifecycle()
-    val transcript by viewModel.transcriptState.collectAsStateWithLifecycle()
-    val savedTranscripts by viewModel.transcriptHistory.collectAsStateWithLifecycle()
     val isFavorite by viewModel.isCurrentFavorite.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
@@ -300,7 +303,7 @@ private fun PlayerRoot(
 
     LaunchedEffect(playerState.errorMessage) {
         val err = playerState.errorMessage ?: return@LaunchedEffect
-        Toast.makeText(context, "پخش ناموفق: $err", Toast.LENGTH_LONG).show()
+        Toast.makeText(context, L.pick("پخش ناموفق: $err", "Playback failed: $err"), Toast.LENGTH_LONG).show()
     }
 
     // Leaving music page always dismisses the music audio sheet
@@ -316,11 +319,10 @@ private fun PlayerRoot(
     }
 
     BackHandler(
-        enabled = transcript.viewerText != null || topOpen || bottomOpen ||
+        enabled = topOpen || bottomOpen ||
             (pagerState.currentPage != PAGE_MUSIC && !lockPagerForVideoGestures),
     ) {
         when {
-            transcript.viewerText != null -> viewModel.dismissTranscriptViewer()
             bottomOpen -> bottomOpen = false
             topOpen -> topOpen = false
             pagerState.currentPage != PAGE_MUSIC && !lockPagerForVideoGestures -> scope.launch {
@@ -474,9 +476,10 @@ private fun PlayerRoot(
                     onDeleteSelectedAsk = { deleteSelectedAsk = true },
                     onOpenFavorites = viewModel::openFavoritesPlaylist,
                     onRenamePlaylist = viewModel::renamePlaylist,
+                    onSetEnglish = { viewModel.setEnglishUi(it) },
                     onDeletePlaylist = viewModel::deletePlaylist,
                     onReorderPlaylists = viewModel::reorderPlaylists,
-                    backEnabled = transcript.viewerText == null && addToPlaylistAsk == null,
+                    backEnabled = addToPlaylistAsk == null,
                     hazeState = hazeState,
                 )
                 BottomAudioDrawer(
@@ -484,30 +487,8 @@ private fun PlayerRoot(
                     settings = settings,
                     abActive = playerState.abLoopActive,
                     abHalf = playerState.abPointAMs != null && playerState.abPointBMs == null,
-                    transcript = TranscriptUi(
-                        running = transcript.isRunning,
-                        downloading = transcript.isDownloading,
-                        progress = transcript.progress,
-                        status = transcript.statusFa,
-                        error = transcript.errorFa,
-                    ),
-                    saved = savedTranscripts.map { SavedTranscript(it.path, it.title, it.updatedAt, running = transcript.isRunning && transcript.activePath == it.path) },
-                    backEnabled = transcript.viewerText == null,
                     actions = remember(viewModel) {
                         AudioActions(
-                            onToggleTranscript = {
-                                if (viewModel.playerState.value.current == null) {
-                                    Toast.makeText(context, "اول یک آهنگ یا ویدیو پخش کنید", Toast.LENGTH_SHORT).show()
-                                } else {
-                                    viewModel.toggleTranscription()
-                                }
-                            },
-                            onOpenSaved = { viewModel.openSavedTranscript(it.id) },
-                            onShareSaved = { t ->
-                                viewModel.readSavedTranscript(t.id)?.let { (title, body) -> shareText(context, title, body) }
-                            },
-                            onDeleteSaved = { viewModel.deleteSavedTranscript(it.id) },
-                            onRefreshSaved = viewModel::refreshTranscripts,
                             onDialogue = { viewModel.setDialogueClarity(it) },
                             onNightMode = { viewModel.setNightMode(it) },
                             onSpeed = viewModel::setPlaybackSpeed,
@@ -530,18 +511,12 @@ private fun PlayerRoot(
                 )
             }
 
-            TranscriptViewerOverlay(
-                visible = transcript.viewerText != null,
-                title = transcript.viewerTitle.orEmpty(),
-                body = transcript.viewerText.orEmpty(),
-                onDismiss = viewModel::dismissTranscriptViewer,
-            )
 
             deleteAsk?.let { item ->
                 AlertDialog(
                     onDismissRequest = { deleteAsk = null },
-                    title = { Text("حذف فایل") },
-                    text = { Text("مطمئنی می‌خوای از دستگاه حذف بشه؟") },
+                    title = { Text(L.t("حذف فایل")) },
+                    text = { Text(L.t("مطمئنی می‌خوای از دستگاه حذف بشه؟")) },
                     confirmButton = {
                         TextButton(
                             onClick = {
@@ -549,10 +524,10 @@ private fun PlayerRoot(
                                 viewModel.deleteMediaItem(item.id)
                                 deleteAsk = null
                             },
-                        ) { Text("حذف") }
+                        ) { Text(L.t("حذف")) }
                     },
                     dismissButton = {
-                        TextButton(onClick = { deleteAsk = null }) { Text("انصراف") }
+                        TextButton(onClick = { deleteAsk = null }) { Text(L.t("انصراف")) }
                     },
                 )
             }
@@ -560,13 +535,13 @@ private fun PlayerRoot(
             renameAsk?.let { item ->
                 AlertDialog(
                     onDismissRequest = { renameAsk = null },
-                    title = { Text("تغییر نام") },
+                    title = { Text(L.t("تغییر نام")) },
                     text = {
                         OutlinedTextField(
                             value = renameDraft,
                             onValueChange = { renameDraft = it },
                             singleLine = true,
-                            label = { Text("نام جدید") },
+                            label = { Text(L.t("نام جدید")) },
                         )
                     },
                     confirmButton = {
@@ -579,10 +554,10 @@ private fun PlayerRoot(
                                 }
                                 renameAsk = null
                             },
-                        ) { Text("ذخیره") }
+                        ) { Text(L.t("ذخیره")) }
                     },
                     dismissButton = {
-                        TextButton(onClick = { renameAsk = null }) { Text("انصراف") }
+                        TextButton(onClick = { renameAsk = null }) { Text(L.t("انصراف")) }
                     },
                 )
             }
@@ -590,8 +565,8 @@ private fun PlayerRoot(
             if (deleteSelectedAsk) {
                 AlertDialog(
                     onDismissRequest = { deleteSelectedAsk = false },
-                    title = { Text("حذف فایل") },
-                    text = { Text("مطمئنی می‌خوای از دستگاه حذف بشه؟") },
+                    title = { Text(L.t("حذف فایل")) },
+                    text = { Text(L.t("مطمئنی می‌خوای از دستگاه حذف بشه؟")) },
                     confirmButton = {
                         TextButton(
                             onClick = {
@@ -602,10 +577,10 @@ private fun PlayerRoot(
                                 viewModel.clearSelection()
                                 deleteSelectedAsk = false
                             },
-                        ) { Text("حذف") }
+                        ) { Text(L.t("حذف")) }
                     },
                     dismissButton = {
-                        TextButton(onClick = { deleteSelectedAsk = false }) { Text("انصراف") }
+                        TextButton(onClick = { deleteSelectedAsk = false }) { Text(L.t("انصراف")) }
                     },
                 )
             }
@@ -618,8 +593,8 @@ private fun PlayerRoot(
                 visible = pickItems != null,
                 subtitle = when {
                     pickItems == null -> ""
-                    pickItems.size == 1 -> "«${pickItems[0].title}» — یک پلی‌لیست را بزنید"
-                    else -> "${pickItems.size} آهنگ — یک پلی‌لیست را بزنید"
+                    pickItems.size == 1 -> L.pick("«${pickItems[0].title}» — یک پلی‌لیست را بزنید", "“${pickItems[0].title}” — tap a playlist")
+                    else -> L.pick("${pickItems.size} آهنگ — یک پلی‌لیست را بزنید", "${pickItems.size} songs — tap a playlist")
                 },
                 playlists = pickerData,
                 onPick = { pl ->
@@ -627,18 +602,17 @@ private fun PlayerRoot(
                     items.forEach { viewModel.addMediaToPlaylist(pl.id, it.id) }
                     addToPlaylistAsk = null
                     viewModel.clearSelection()
-                    Toast.makeText(context, if (pl.hasAll) "از قبل در «${pl.name}» بود" else "به «${pl.name}» اضافه شد", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, if (pl.hasAll) L.pick("از قبل در «${pl.name}» بود", "Already in “${pl.name}”") else L.pick("به «${pl.name}» اضافه شد", "Added to “${pl.name}”"), Toast.LENGTH_SHORT).show()
                 },
                 onCreate = { name ->
                     val items = pickItems.orEmpty()
                     if (items.isNotEmpty()) viewModel.createPlaylistAndAddAll(name, items.map { it.id })
                     addToPlaylistAsk = null
                     viewModel.clearSelection()
-                    Toast.makeText(context, "پلی‌لیست «$name» ساخته شد", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, L.pick("پلی‌لیست «$name» ساخته شد", "Playlist “$name” created"), Toast.LENGTH_SHORT).show()
                 },
                 onDismiss = { addToPlaylistAsk = null },
                 hazeState = hazeState,
-                backEnabled = transcript.viewerText == null,
             )
         }
     }
