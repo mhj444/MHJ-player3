@@ -3,6 +3,7 @@ package com.mhj.player.di
 import android.content.Context
 import com.mhj.player.core.data.datastore.SettingsDataStore
 import com.mhj.player.core.data.db.MhjDatabase
+import com.mhj.player.core.data.library.MediaLibraryScanner
 import com.mhj.player.core.data.repository.LibraryRepository
 import com.mhj.player.core.data.repository.PlaybackPersistenceRepository
 import com.mhj.player.core.model.MediaItemModel
@@ -23,16 +24,17 @@ class AppContainer(context: Context) {
     val libraryRepository = LibraryRepository(db.mediaItemDao(), db.playlistDao())
     val playbackPersistence = PlaybackPersistenceRepository(db.queueDao(), db.playbackStateDao())
     val playbackController = PlaybackController(appContext, scope)
+    val mediaScanner = MediaLibraryScanner(appContext)
 
     fun bootstrap() {
-        // Defer MediaController bind slightly so Application/Activity startup can't race
-        // a failing service connection into a hard crash on first paint.
         scope.launch {
             runCatching { playbackController.connect() }
             launch(Dispatchers.IO) {
                 runCatching {
                     ensureDemoCatalog()
-                    ensureDefaultPlaylist()
+                    libraryRepository.ensureSmartPlaylists()
+                    libraryRepository.refreshSmartPlaylists()
+                    ensureFavoritesPlaylist()
                 }
             }
         }
@@ -41,6 +43,7 @@ class AppContainer(context: Context) {
     private suspend fun ensureDemoCatalog() {
         val existing = libraryRepository.observeMedia().first()
         if (existing.isNotEmpty()) return
+        val now = System.currentTimeMillis()
         val demos = listOf(
             MediaItemModel(
                 id = "demo_music_1",
@@ -48,8 +51,11 @@ class AppContainer(context: Context) {
                 title = "Jazz in Paris",
                 artist = "Media Right Productions",
                 album = "YouTube Audio Library",
-                durationMs = 0L,
+                durationMs = 102000L,
                 kind = MediaKind.MUSIC,
+                folder = "Demo",
+                format = "MP3",
+                dateAddedMs = now,
             ),
             MediaItemModel(
                 id = "demo_music_2",
@@ -59,6 +65,9 @@ class AppContainer(context: Context) {
                 album = "Demo",
                 durationMs = 0L,
                 kind = MediaKind.MUSIC,
+                folder = "Demo",
+                format = "MP3",
+                dateAddedMs = now - 86_400_000L,
             ),
             MediaItemModel(
                 id = "demo_video_1",
@@ -68,14 +77,17 @@ class AppContainer(context: Context) {
                 album = "Video",
                 durationMs = 0L,
                 kind = MediaKind.VIDEO,
+                folder = "Demo",
+                format = "MP4",
+                dateAddedMs = now - 172_800_000L,
             ),
         )
         libraryRepository.upsertMedia(demos)
     }
 
-    private suspend fun ensureDefaultPlaylist() {
+    private suspend fun ensureFavoritesPlaylist() {
         val playlists = libraryRepository.observePlaylists().first()
-        if (playlists.isNotEmpty()) return
+        if (playlists.any { !it.isSmart && it.name.equals("Favorites", ignoreCase = true) }) return
         val id = libraryRepository.createPlaylist("Favorites")
         libraryRepository.addToPlaylist(id, "demo_music_1", 0)
     }

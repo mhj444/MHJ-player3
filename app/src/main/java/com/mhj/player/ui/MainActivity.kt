@@ -2,9 +2,12 @@ package com.mhj.player.ui
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -21,6 +24,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -38,6 +42,7 @@ import com.mhj.player.core.ui.theme.MhjTheme
 import com.mhj.player.feature.music.MusicPlayerScreen
 import com.mhj.player.feature.video.VideoPlayerScreen
 import dev.chrisbanes.haze.HazeState
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val viewModel: PlayerViewModel by viewModels {
@@ -45,14 +50,14 @@ class MainActivity : ComponentActivity() {
     }
 
     private val permissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { /* Media3 session notification works after grant */ }
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { /* Media scan / notifications after grant */ }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        maybeRequestNotificationPermission()
+        maybeRequestPermissions()
 
         setContent {
             val settings by viewModel.settings.collectAsStateWithLifecycle()
@@ -70,17 +75,26 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun maybeRequestNotificationPermission() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
-        val granted = ContextCompat.checkSelfPermission(
-            this,
-            Manifest.permission.POST_NOTIFICATIONS,
-        ) == PackageManager.PERMISSION_GRANTED
-        if (!granted) {
-            permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+    private fun maybeRequestPermissions() {
+        val needed = buildList {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                add(Manifest.permission.POST_NOTIFICATIONS)
+                add(Manifest.permission.READ_MEDIA_AUDIO)
+                add(Manifest.permission.READ_MEDIA_VIDEO)
+            } else {
+                add(Manifest.permission.READ_EXTERNAL_STORAGE)
+            }
+        }.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (needed.isNotEmpty()) {
+            permissionLauncher.launch(needed.toTypedArray())
         }
     }
 }
+
+private const val PAGE_VIDEO = 0
+private const val PAGE_MUSIC = 1
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -88,16 +102,39 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
     val playerState by viewModel.playerState.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val library by viewModel.libraryItems.collectAsStateWithLifecycle()
+    val allLibrary by viewModel.allLibraryItems.collectAsStateWithLifecycle()
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
-    val pagerState = rememberPagerState(pageCount = { 2 })
+    val filter by viewModel.filter.collectAsStateWithLifecycle()
+    val selectedIds by viewModel.selectedIds.collectAsStateWithLifecycle()
+    val scanning by viewModel.scanning.collectAsStateWithLifecycle()
+
+    // Music starts centered; swipe RIGHT (LTR) reveals video on the left page
+    val pagerState = rememberPagerState(initialPage = PAGE_MUSIC, pageCount = { 2 })
+    val scope = rememberCoroutineScope()
     var topOpen by remember { mutableStateOf(false) }
     var bottomOpen by remember { mutableStateOf(false) }
     val hazeState = remember { HazeState() }
 
-    // Phase 1 smoke: if nothing was restored into the session, load the demo music queue.
-    LaunchedEffect(library, playerState.queue.size, playerState.current) {
-        if (library.isNotEmpty() && playerState.queue.isEmpty() && playerState.current == null) {
+    val safLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree(),
+    ) { uri: Uri? ->
+        uri?.let { viewModel.importSafTree(it) }
+    }
+
+    LaunchedEffect(allLibrary, playerState.queue.size, playerState.current) {
+        if (allLibrary.isNotEmpty() && playerState.queue.isEmpty() && playerState.current == null) {
             viewModel.playDemoMusic()
+        }
+    }
+
+    // System back pops sheet/page instead of finishing the activity
+    BackHandler(enabled = topOpen || bottomOpen || pagerState.currentPage != PAGE_MUSIC) {
+        when {
+            bottomOpen -> bottomOpen = false
+            topOpen -> topOpen = false
+            pagerState.currentPage != PAGE_MUSIC -> scope.launch {
+                pagerState.animateScrollToPage(PAGE_MUSIC)
+            }
         }
     }
 
@@ -117,58 +154,82 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
     ) {
         BoardBackground(hazeState = hazeState)
         Box(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
-        HorizontalPager(
-            state = pagerState,
-            modifier = Modifier.fillMaxSize(),
-            userScrollEnabled = !topOpen && !bottomOpen,
-        ) { page ->
-            when (page) {
-                0 -> MusicPlayerScreen(
-                    state = playerState,
-                    onPlayPause = viewModel::togglePlayPause,
-                    onSeek = viewModel::seekTo,
-                    onPrevious = viewModel::previous,
-                    onNext = viewModel::next,
-                    onShuffle = viewModel::toggleShuffle,
-                    onRepeat = viewModel::cycleRepeat,
-                    onOpenTopMenu = { topOpen = true },
-                    onOpenBottomMenu = { bottomOpen = true },
-                )
-                else -> VideoPlayerScreen(
-                    state = playerState,
-                    player = viewModel.playerOrNull(),
-                    onPlayPause = viewModel::togglePlayPause,
-                    onSeek = viewModel::seekTo,
-                    onSeekBy = viewModel::seekBy,
-                    onOpenBottomMenu = { bottomOpen = true },
-                )
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize(),
+                userScrollEnabled = !topOpen && !bottomOpen,
+            ) { page ->
+                when (page) {
+                    PAGE_VIDEO -> VideoPlayerScreen(
+                        state = playerState,
+                        player = viewModel.playerOrNull(),
+                        onPlayPause = viewModel::togglePlayPause,
+                        onSeek = viewModel::seekTo,
+                        onSeekBy = viewModel::seekBy,
+                        onOpenBottomMenu = { bottomOpen = true },
+                    )
+                    else -> MusicPlayerScreen(
+                        state = playerState,
+                        onPlayPause = viewModel::togglePlayPause,
+                        onSeek = viewModel::seekTo,
+                        onPrevious = viewModel::previous,
+                        onNext = viewModel::next,
+                        onShuffle = viewModel::toggleShuffle,
+                        onRepeat = viewModel::cycleRepeat,
+                        onOpenTopMenu = { topOpen = true },
+                        onGoHome = {
+                            bottomOpen = false
+                            topOpen = false
+                            scope.launch { pagerState.animateScrollToPage(PAGE_MUSIC) }
+                        },
+                        onOpenBottomMenu = { bottomOpen = true },
+                    )
+                }
             }
-        }
 
-        TopMenuDrawer(
-            visible = topOpen,
-            settings = settings,
-            playlists = playlists,
-            onDismiss = { topOpen = false },
-            onToggleTheme = viewModel::toggleTheme,
-            onCreatePlaylist = viewModel::createPlaylist,
-            onPlayPlaylist = viewModel::playPlaylist,
-            hazeState = hazeState,
-        )
-        BottomAudioDrawer(
-            visible = bottomOpen,
-            settings = settings,
-            onDismiss = { bottomOpen = false },
-            onDialogueClarity = viewModel::setDialogueClarity,
-            onNightMode = viewModel::setNightMode,
-            onSpeedClick = viewModel::bumpSpeed,
-            onSpeedChange = viewModel::setPlaybackSpeed,
-            onSpeedNudge = viewModel::nudgeSpeed,
-            onEqClick = { /* DSP Phase 3 hook */ },
-            onTimerClick = viewModel::cycleSleepTimer,
-            onTimerChange = viewModel::setSleepTimerMinutes,
-            hazeState = hazeState,
-        )
+            TopMenuDrawer(
+                visible = topOpen,
+                settings = settings,
+                playlists = playlists,
+                libraryItems = library,
+                filter = filter,
+                selectedIds = selectedIds,
+                scanning = scanning,
+                onDismiss = { topOpen = false },
+                onToggleTheme = viewModel::toggleTheme,
+                onCreatePlaylist = viewModel::createPlaylist,
+                onPlayPlaylist = { id ->
+                    viewModel.playPlaylist(id)
+                    topOpen = false
+                    scope.launch { pagerState.animateScrollToPage(PAGE_MUSIC) }
+                },
+                onUpdateFilter = viewModel::updateFilter,
+                onToggleSelect = viewModel::toggleSelect,
+                onClearSelection = viewModel::clearSelection,
+                onRenameSelected = viewModel::renameSelected,
+                onDeleteSelected = viewModel::deleteSelected,
+                onPlayItem = { item ->
+                    viewModel.playItem(item)
+                    topOpen = false
+                    val page = if (item.kind.name == "VIDEO") PAGE_VIDEO else PAGE_MUSIC
+                    scope.launch { pagerState.animateScrollToPage(page) }
+                },
+                onScanDevice = viewModel::scanDeviceLibrary,
+                onImportFolder = { safLauncher.launch(null) },
+                hazeState = hazeState,
+            )
+            BottomAudioDrawer(
+                visible = bottomOpen,
+                settings = settings,
+                onDismiss = { bottomOpen = false },
+                onDialogueClarity = viewModel::setDialogueClarity,
+                onNightMode = viewModel::setNightMode,
+                onSpeedChange = viewModel::setPlaybackSpeed,
+                onSpeedNudge = viewModel::nudgeSpeed,
+                onEqClick = { /* DSP Phase 3 hook */ },
+                onTimerChange = viewModel::setSleepTimerMinutes,
+                hazeState = hazeState,
+            )
         }
     }
 }

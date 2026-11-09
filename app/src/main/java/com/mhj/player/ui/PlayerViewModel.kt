@@ -1,12 +1,15 @@
 package com.mhj.player.ui
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.mhj.player.core.data.datastore.SettingsDataStore
+import com.mhj.player.core.data.library.MediaLibraryScanner
 import com.mhj.player.core.data.repository.LibraryRepository
 import com.mhj.player.core.model.AppSettings
 import com.mhj.player.core.model.AppTheme
+import com.mhj.player.core.model.LibraryFilter
 import com.mhj.player.core.model.MediaItemModel
 import com.mhj.player.core.model.MediaKind
 import com.mhj.player.core.model.PlayerUiState
@@ -14,10 +17,13 @@ import com.mhj.player.core.model.PlaylistModel
 import com.mhj.player.core.playback.engine.AudioEffectsController
 import com.mhj.player.core.playback.engine.PlaybackController
 import com.mhj.player.di.AppContainer
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -26,6 +32,7 @@ class PlayerViewModel(
     private val playback: PlaybackController,
     private val settingsStore: SettingsDataStore,
     private val library: LibraryRepository,
+    private val scanner: MediaLibraryScanner,
 ) : ViewModel() {
 
     private val audioEffects = AudioEffectsController()
@@ -34,14 +41,27 @@ class PlayerViewModel(
     val settings: StateFlow<AppSettings> = settingsStore.settings
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AppSettings())
 
-    val libraryItems: StateFlow<List<MediaItemModel>> = library.observeMedia()
+    private val libraryFilter = MutableStateFlow(LibraryFilter())
+    val filter: StateFlow<LibraryFilter> = libraryFilter
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val libraryItems: StateFlow<List<MediaItemModel>> = libraryFilter
+        .flatMapLatest { library.observeFiltered(it) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val allLibraryItems: StateFlow<List<MediaItemModel>> = library.observeMedia()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val playlists: StateFlow<List<PlaylistModel>> = library.observePlaylists()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    private val _selectedIds = MutableStateFlow<Set<String>>(emptySet())
+    val selectedIds: StateFlow<Set<String>> = _selectedIds
+
+    private val _scanning = MutableStateFlow(false)
+    val scanning: StateFlow<Boolean> = _scanning
+
     init {
-        // Media3 session id → Android AudioEffect (dialogue clarity / night mode)
         viewModelScope.launch {
             playback.state
                 .map { it.audioSessionId }
@@ -59,15 +79,28 @@ class PlayerViewModel(
                     audioEffects.setNightMode(night)
                 }
         }
+        viewModelScope.launch {
+            // Increment play count when the current media id changes while playing
+            var lastId: String? = null
+            playback.state.collect { state ->
+                val id = state.current?.id
+                if (id != null && id != lastId && state.isPlaying) {
+                    lastId = id
+                    library.recordPlay(id)
+                    library.refreshSmartPlaylists()
+                }
+            }
+        }
     }
 
     override fun onCleared() {
         audioEffects.release()
         super.onCleared()
     }
+
     fun playDemoMusic() {
         viewModelScope.launch {
-            val queue = libraryItems.value
+            val queue = allLibraryItems.value
                 .filter { it.kind == MediaKind.MUSIC }
                 .ifEmpty { return@launch }
             playback.awaitConnected()
@@ -78,9 +111,21 @@ class PlayerViewModel(
     fun playItem(item: MediaItemModel) {
         viewModelScope.launch {
             playback.awaitConnected()
-            val queue = libraryItems.value.ifEmpty { listOf(item) }
+            val queue = allLibraryItems.value.ifEmpty { listOf(item) }
             val index = queue.indexOfFirst { it.id == item.id }.coerceAtLeast(0)
             playback.play(if (queue.any { it.id == item.id }) queue else listOf(item), index)
+            library.recordPlay(item.id)
+            library.refreshSmartPlaylists()
+        }
+    }
+
+    fun playQueue(items: List<MediaItemModel>, startIndex: Int = 0) {
+        if (items.isEmpty()) return
+        viewModelScope.launch {
+            playback.awaitConnected()
+            playback.play(items, startIndex.coerceIn(0, items.lastIndex))
+            items.getOrNull(startIndex)?.let { library.recordPlay(it.id) }
+            library.refreshSmartPlaylists()
         }
     }
 
@@ -148,12 +193,70 @@ class PlayerViewModel(
         }
     }
 
+    fun updateFilter(transform: (LibraryFilter) -> LibraryFilter) {
+        libraryFilter.value = transform(libraryFilter.value)
+    }
+
+    fun toggleSelect(id: String) {
+        _selectedIds.value = _selectedIds.value.toMutableSet().also {
+            if (!it.add(id)) it.remove(id)
+        }
+    }
+
+    fun clearSelection() {
+        _selectedIds.value = emptySet()
+    }
+
+    fun renameSelected(title: String) {
+        val id = _selectedIds.value.singleOrNull() ?: return
+        viewModelScope.launch {
+            library.renameMedia(id, title)
+            clearSelection()
+        }
+    }
+
+    fun deleteSelected() {
+        val ids = _selectedIds.value.toList()
+        viewModelScope.launch {
+            library.deleteMedia(ids)
+            clearSelection()
+            library.refreshSmartPlaylists()
+        }
+    }
+
+    fun scanDeviceLibrary() {
+        viewModelScope.launch {
+            _scanning.value = true
+            runCatching {
+                val scanned = scanner.scanMediaStore()
+                if (scanned.isNotEmpty()) {
+                    library.upsertMedia(scanned)
+                    library.refreshSmartPlaylists()
+                }
+            }
+            _scanning.value = false
+        }
+    }
+
+    fun importSafTree(uri: Uri) {
+        viewModelScope.launch {
+            _scanning.value = true
+            runCatching {
+                val scanned = scanner.scanSafTree(uri)
+                if (scanned.isNotEmpty()) {
+                    library.upsertMedia(scanned)
+                    library.refreshSmartPlaylists()
+                }
+            }
+            _scanning.value = false
+        }
+    }
+
     fun createPlaylist(name: String) {
         viewModelScope.launch {
             val trimmed = name.trim().ifEmpty { return@launch }
             val id = library.createPlaylist(trimmed)
-            // Seed with current library music so the playlist is immediately playable
-            libraryItems.value
+            allLibraryItems.value
                 .filter { it.kind == MediaKind.MUSIC }
                 .forEachIndexed { index, item ->
                     library.addToPlaylist(id, item.id, index)
@@ -163,10 +266,12 @@ class PlayerViewModel(
 
     fun playPlaylist(playlistId: Long) {
         viewModelScope.launch {
+            library.refreshSmartPlaylists()
             val queue = library.getPlaylistMedia(playlistId)
             if (queue.isEmpty()) return@launch
             playback.awaitConnected()
             playback.play(queue, 0)
+            library.recordPlay(queue.first().id)
         }
     }
 
@@ -179,6 +284,7 @@ class PlayerViewModel(
                         playback = container.playbackController,
                         settingsStore = container.settingsStore,
                         library = container.libraryRepository,
+                        scanner = container.mediaScanner,
                     ) as T
                 }
             }

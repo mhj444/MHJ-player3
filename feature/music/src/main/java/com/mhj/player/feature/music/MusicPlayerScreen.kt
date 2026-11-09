@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -47,7 +49,6 @@ import com.mhj.player.core.ui.R
 import com.mhj.player.core.ui.components.BrandLogoHeader
 import com.mhj.player.core.ui.components.EmbossCircle
 import com.mhj.player.core.ui.components.EqualizerVisualizer
-import com.mhj.player.core.ui.components.softEmboss
 import com.mhj.player.core.ui.components.softGoldHalo
 import com.mhj.player.core.ui.theme.MhjColors
 import com.mhj.player.core.ui.theme.MhjTheme
@@ -63,7 +64,8 @@ fun MusicPlayerScreen(
     onShuffle: () -> Unit,
     onRepeat: () -> Unit,
     onOpenTopMenu: () -> Unit,
-    onOpenBottomMenu: () -> Unit,
+    onGoHome: () -> Unit,
+    onOpenBottomMenu: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val c = MhjTheme.colors
@@ -73,13 +75,72 @@ fun MusicPlayerScreen(
     val duration = state.durationMs.coerceAtLeast(0L)
     val position = state.positionMs.coerceIn(0L, if (duration > 0) duration else Long.MAX_VALUE)
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(horizontal = if (dark) 20.dp else 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Spacer(Modifier.height(4.dp))
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val landscape = maxWidth > maxHeight
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = if (dark) 20.dp else 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            if (landscape) {
+                LandscapeMusicContent(
+                    dark = dark,
+                    title = title,
+                    artist = artist,
+                    state = state,
+                    position = position,
+                    duration = duration,
+                    onOpenTopMenu = onOpenTopMenu,
+                    onPlayPause = onPlayPause,
+                    onSeek = onSeek,
+                    onPrevious = onPrevious,
+                    onNext = onNext,
+                    onShuffle = onShuffle,
+                    onRepeat = onRepeat,
+                    onGoHome = onGoHome,
+                )
+            } else {
+                PortraitMusicContent(
+                    dark = dark,
+                    title = title,
+                    artist = artist,
+                    state = state,
+                    position = position,
+                    duration = duration,
+                    onOpenTopMenu = onOpenTopMenu,
+                    onPlayPause = onPlayPause,
+                    onSeek = onSeek,
+                    onPrevious = onPrevious,
+                    onNext = onNext,
+                    onShuffle = onShuffle,
+                    onRepeat = onRepeat,
+                    onGoHome = onGoHome,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ColumnScope.PortraitMusicContent(
+    dark: Boolean,
+    title: String,
+    artist: String,
+    state: PlayerUiState,
+    position: Long,
+    duration: Long,
+    onOpenTopMenu: () -> Unit,
+    onPlayPause: () -> Unit,
+    onSeek: (Long) -> Unit,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    onShuffle: () -> Unit,
+    onRepeat: () -> Unit,
+    onGoHome: () -> Unit,
+) {
+    val c = MhjTheme.colors
+    Spacer(Modifier.height(4.dp))
 
         // Header: gold-rim orb wells + official icons flanking brand logo (board)
         Row(
@@ -213,10 +274,84 @@ fun MusicPlayerScreen(
 
         Spacer(Modifier.weight(1f))
 
-        BottomNav(
-            dark = dark,
-            onHome = onOpenBottomMenu,
-        )
+    BottomNav(
+        dark = dark,
+        onHome = onGoHome,
+    )
+}
+
+@Composable
+private fun ColumnScope.LandscapeMusicContent(
+    dark: Boolean,
+    title: String,
+    artist: String,
+    state: PlayerUiState,
+    position: Long,
+    duration: Long,
+    onOpenTopMenu: () -> Unit,
+    onPlayPause: () -> Unit,
+    onSeek: (Long) -> Unit,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    onShuffle: () -> Unit,
+    onRepeat: () -> Unit,
+    onGoHome: () -> Unit,
+) {
+    val c = MhjTheme.colors
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .weight(1f),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.38f)
+                .aspectRatio(1f),
+            contentAlignment = Alignment.Center,
+        ) {
+            Image(
+                painter = painterResource(R.drawable.demo_album_art),
+                contentDescription = null,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(8.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .border(
+                        1.4.dp,
+                        Brush.linearGradient(listOf(MhjColors.GoldHi, MhjColors.GoldLo)),
+                        RoundedCornerShape(18.dp),
+                    ),
+                contentScale = ContentScale.Crop,
+            )
+        }
+        Spacer(Modifier.width(16.dp))
+        Column(
+            Modifier.weight(1f),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                HeaderOrb(onClick = onOpenTopMenu, dark = dark, iconRes = if (dark) R.drawable.icon_mid_library else R.drawable.icon_porc_library)
+                BrandLogoHeader(modifier = Modifier.weight(1f), showWordmark = false)
+                HeaderOrb(onClick = {}, dark = dark, iconRes = if (dark) R.drawable.icon_mid_cast else R.drawable.icon_porc_cast)
+            }
+            Text(title, color = if (dark) Color(0xFFF7F2E8) else c.onBackground, fontSize = 18.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(artist, color = MhjColors.Gold, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(6.dp))
+            GoldSeekBar(
+                progress = if (duration > 0) position.toFloat() / duration else 0f,
+                onSeekFraction = { frac -> if (duration > 0) onSeek((frac * duration).roundToLong()) },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(8.dp))
+            if (dark) {
+                MidnightTransport(state, onPlayPause, onPrevious, onNext, onShuffle, onRepeat)
+            } else {
+                PorcelainTransport(state, onPlayPause, onPrevious, onNext, onShuffle, onRepeat)
+            }
+            Spacer(Modifier.height(4.dp))
+            BottomNav(dark = dark, onHome = onGoHome)
+        }
     }
 }
 

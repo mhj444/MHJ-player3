@@ -25,12 +25,19 @@ data class MediaItemModel(
     val durationMs: Long = 0L,
     val artworkUri: String? = null,
     val kind: MediaKind = MediaKind.MUSIC,
+    val folder: String = "",
+    val format: String = "",
+    val dateAddedMs: Long = 0L,
+    val playCount: Int = 0,
+    val lastPlayedAt: Long = 0L,
 )
 
 data class PlaylistModel(
     val id: Long,
     val name: String,
     val createdAt: Long,
+    val isSmart: Boolean = false,
+    val smartKind: String? = null,
 )
 
 data class PlaybackSnapshot(
@@ -68,4 +75,26 @@ data class AppSettings(
     val sleepTimerMinutes: Int = 0,
     val dialogueClarity: Boolean = false,
     val nightModeAudio: Boolean = false,
+)
+
+enum class LibrarySort {
+    NAME,
+    ARTIST,
+    ALBUM,
+    DATE_ADDED,
+    FORMAT,
+    FOLDER,
+    DURATION,
+    PLAY_COUNT,
+}
+
+data class LibraryFilter(
+    val query: String = "",
+    val kind: MediaKind? = null,
+    val artist: String? = null,
+    val album: String? = null,
+    val format: String? = null,
+    val folder: String? = null,
+    val playedOnly: Boolean? = null, // true=played, false=unplayed, null=all
+    val sort: LibrarySort = LibrarySort.NAME,
 )

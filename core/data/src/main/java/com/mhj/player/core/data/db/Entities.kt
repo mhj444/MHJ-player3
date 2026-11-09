@@ -15,6 +15,10 @@ data class MediaItemEntity(
     val durationMs: Long,
     val artworkUri: String?,
     val kind: String,
+    val folder: String = "",
+    val format: String = "",
+    val dateAddedMs: Long = 0L,
+    val playCount: Int = 0,
     val lastPlayedAt: Long = 0L,
 )
 
@@ -23,6 +27,8 @@ data class PlaylistEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
     val createdAt: Long,
+    val isSmart: Boolean = false,
+    val smartKind: String? = null,
 )
 
 @Entity(

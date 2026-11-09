@@ -60,7 +60,8 @@ fun VideoPlayerScreen(
     val playerView = remember {
         PlayerView(context).apply {
             useController = false
-            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+            // Fill landscape/portrait without letterbox clipping of controls
+            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -88,7 +89,7 @@ fun VideoPlayerScreen(
                 Text("Video space", color = colors.primary, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Swipe right to return to music.",
+                    "Swipe left to return to music.",
                     color = colors.muted,
                     fontSize = 14.sp,
                 )

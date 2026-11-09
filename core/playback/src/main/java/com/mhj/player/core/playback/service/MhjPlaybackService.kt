@@ -94,6 +94,9 @@ class MhjPlaybackService : MediaSessionService() {
                 sessionActivity?.let { session.setSessionActivity(it) }
             }
 
+            // Gold-on-dark MediaStyle notification (API-limited colorization)
+            setMediaNotificationProvider(MhjMediaNotificationProvider(this))
+
             serviceScope.launch {
                 restoreIfNeeded(exo)
             }

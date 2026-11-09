@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface MediaItemDao {
-    @Query("SELECT * FROM media_items ORDER BY lastPlayedAt DESC")
+    @Query("SELECT * FROM media_items ORDER BY title COLLATE NOCASE ASC")
     fun observeAll(): Flow<List<MediaItemEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -20,11 +20,42 @@ interface MediaItemDao {
 
     @Query("SELECT * FROM media_items WHERE id = :id LIMIT 1")
     suspend fun getById(id: String): MediaItemEntity?
+
+    @Query("UPDATE media_items SET title = :title WHERE id = :id")
+    suspend fun rename(id: String, title: String)
+
+    @Query("DELETE FROM media_items WHERE id IN (:ids)")
+    suspend fun deleteIds(ids: List<String>)
+
+    @Query(
+        """
+        UPDATE media_items
+        SET playCount = playCount + 1, lastPlayedAt = :playedAt
+        WHERE id = :id
+        """,
+    )
+    suspend fun recordPlay(id: String, playedAt: Long)
+
+    @Query("SELECT * FROM media_items ORDER BY dateAddedMs DESC LIMIT :limit")
+    suspend fun newest(limit: Int): List<MediaItemEntity>
+
+    @Query(
+        """
+        SELECT * FROM media_items
+        WHERE playCount = 0 OR lastPlayedAt = 0 OR lastPlayedAt < :beforeMs
+        ORDER BY lastPlayedAt ASC, title ASC
+        LIMIT :limit
+        """,
+    )
+    suspend fun notPlayedRecently(beforeMs: Long, limit: Int): List<MediaItemEntity>
+
+    @Query("SELECT * FROM media_items ORDER BY playCount DESC, lastPlayedAt DESC LIMIT :limit")
+    suspend fun mostPlayed(limit: Int): List<MediaItemEntity>
 }
 
 @Dao
 interface PlaylistDao {
-    @Query("SELECT * FROM playlists ORDER BY createdAt DESC")
+    @Query("SELECT * FROM playlists ORDER BY isSmart DESC, createdAt DESC")
     fun observeAll(): Flow<List<PlaylistEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -32,6 +63,9 @@ interface PlaylistDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertEntry(entry: PlaylistEntryEntity)
+
+    @Query("DELETE FROM playlist_entries WHERE playlistId = :playlistId")
+    suspend fun clearEntries(playlistId: Long)
 
     @Query(
         """
@@ -55,6 +89,9 @@ interface PlaylistDao {
 
     @Query("SELECT COUNT(*) FROM playlist_entries WHERE playlistId = :playlistId")
     fun observeEntryCount(playlistId: Long): Flow<Int>
+
+    @Query("SELECT id FROM playlists WHERE smartKind = :kind LIMIT 1")
+    suspend fun findSmartId(kind: String): Long?
 
     @Query("DELETE FROM playlists WHERE id = :id")
     suspend fun delete(id: Long)
