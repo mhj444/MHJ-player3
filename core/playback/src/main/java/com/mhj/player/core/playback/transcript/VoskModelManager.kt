@@ -194,9 +194,10 @@ class VoskModelManager(private val context: Context) {
          * Prefer `vosk-model-small-fa-*`; skip 404s at runtime.
          */
         val FA_MODEL_CANDIDATES = listOf(
+            // Our own copy on GitHub (reachable where the original site is not).
             FaModelCandidate(
-                "vosk-model-small-fa-0.4",
-                "https://alphacephei.com/vosk/models/vosk-model-small-fa-0.4.zip",
+                "vosk-model-small-fa-0.42",
+                "https://github.com/mhj444/MHJ-player3/releases/download/models/vosk-fa.zip",
             ),
             FaModelCandidate(
                 "vosk-model-small-fa-0.42",

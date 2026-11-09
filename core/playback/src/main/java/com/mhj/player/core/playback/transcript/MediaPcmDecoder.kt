@@ -120,7 +120,7 @@ object MediaPcmDecoder {
                     }
                     else -> {
                         idleLoops++
-                        if (idleLoops > 200) {
+                        if (idleLoops > 3000) {
                             error("رمزگشایی صدا متوقف شد (timeout)")
                         }
                     }

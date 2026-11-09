@@ -33,7 +33,7 @@ class AppContainer(context: Context) {
             runCatching { playbackController.connect() }
             launch(Dispatchers.IO) {
                 runCatching {
-                    ensureDemoCatalog()
+                    removeDemoCatalog()
                     libraryRepository.ensureSmartPlaylists()
                     libraryRepository.refreshSmartPlaylists()
                     ensureFavoritesPlaylist()
@@ -42,56 +42,12 @@ class AppContainer(context: Context) {
         }
     }
 
-    private suspend fun ensureDemoCatalog() {
-        val existing = libraryRepository.observeMedia().first()
-        if (existing.isNotEmpty()) return
-        val now = System.currentTimeMillis()
-        val demos = listOf(
-            MediaItemModel(
-                id = "demo_music_1",
-                uri = "https://storage.googleapis.com/exoplayer-test-media-0/Jazz_In_Paris.mp3",
-                title = "Jazz in Paris",
-                artist = "Media Right Productions",
-                album = "YouTube Audio Library",
-                durationMs = 102000L,
-                kind = MediaKind.MUSIC,
-                folder = "Demo",
-                format = "MP3",
-                dateAddedMs = now,
-            ),
-            MediaItemModel(
-                id = "demo_music_2",
-                uri = "https://storage.googleapis.com/exoplayer-test-media-1/mp3/android-dev.mp3",
-                title = "The Last Kingdom",
-                artist = "Ramin Djawadi",
-                album = "Demo",
-                durationMs = 0L,
-                kind = MediaKind.MUSIC,
-                folder = "Demo",
-                format = "MP3",
-                dateAddedMs = now - 86_400_000L,
-            ),
-            MediaItemModel(
-                id = "demo_video_1",
-                uri = "https://storage.googleapis.com/exoplayer-test-media-1/mp4/android-screens-lavf-56.36.100-aac-lc-128k-h264-baseline-main-level31-4500k-1920x1080.mp4",
-                title = "Android Screens",
-                artist = "ExoPlayer Demo",
-                album = "Video",
-                durationMs = 0L,
-                kind = MediaKind.VIDEO,
-                folder = "Demo",
-                format = "MP4",
-                dateAddedMs = now - 172_800_000L,
-            ),
-        )
-        libraryRepository.upsertMedia(demos)
+    /** Older builds put three online sample items in the library; take them out. */
+    private suspend fun removeDemoCatalog() {
+        runCatching { libraryRepository.deleteMedia(listOf("demo_music_1", "demo_music_2", "demo_video_1")) }
     }
 
     private suspend fun ensureFavoritesPlaylist() {
-        val id = libraryRepository.ensureFavoritesPlaylistId()
-        val tracks = libraryRepository.getPlaylistMedia(id)
-        if (tracks.isEmpty()) {
-            libraryRepository.addToPlaylist(id, "demo_music_1", 0)
-        }
+        libraryRepository.ensureFavoritesPlaylistId()
     }
 }

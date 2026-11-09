@@ -55,7 +55,13 @@ import com.mhj.player.MhjApp
 import com.mhj.player.core.model.MediaItemModel
 import com.mhj.player.core.model.MediaKind
 import com.mhj.player.core.ui.components.BoardBackground
+import android.app.PictureInPictureParams
+import android.util.Rational
+import com.mhj.player.core.ui.components.AudioActions
 import com.mhj.player.core.ui.components.BottomAudioDrawer
+import com.mhj.player.core.ui.components.SavedTranscript
+import com.mhj.player.core.ui.components.TranscriptUi
+import com.mhj.player.core.ui.components.shareText
 import com.mhj.player.core.ui.components.TopMenuDrawer
 import com.mhj.player.core.ui.components.TranscriptViewerOverlay
 import com.mhj.player.core.ui.gestures.playerEdgeSwipes
@@ -74,13 +80,48 @@ class MainActivity : ComponentActivity() {
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
-    ) { /* Media scan / notifications after grant */ }
+    ) { result ->
+        // As soon as the phone allows it, fill the library with the songs and videos on the phone.
+        if (result.any { (perm, ok) -> ok && perm != Manifest.permission.POST_NOTIFICATIONS }) viewModel.scanDeviceLibrary()
+    }
+
+    /** True while the app is shown as a small floating video window. */
+    private val inPip = mutableStateOf(false)
+    /** Video is on screen and playing — going home should keep it in a small window. */
+    private var pipEligible = false
+
+    private fun pipParams(): PictureInPictureParams =
+        PictureInPictureParams.Builder()
+            .setAspectRatio(Rational(16, 9))
+            .setAutoEnterEnabled(pipEligible)
+            .setSeamlessResizeEnabled(true)
+            .build()
+
+    fun setPipEligible(on: Boolean) {
+        if (on == pipEligible) return
+        pipEligible = on
+        runCatching { setPictureInPictureParams(pipParams()) }
+    }
+
+    fun enterPip() {
+        if (!packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) {
+            Toast.makeText(this, "این گوشی پنجرهٔ کوچک ندارد", Toast.LENGTH_SHORT).show()
+            return
+        }
+        runCatching { enterPictureInPictureMode(pipParams()) }
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        inPip.value = isInPictureInPictureMode
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         WindowCompat.setDecorFitsSystemWindows(window, false)
         maybeRequestPermissions()
+        if (hasMediaPermission()) viewModel.scanDeviceLibrary()
 
         setContent {
             val settings by viewModel.settings.collectAsStateWithLifecycle()
@@ -93,9 +134,19 @@ class MainActivity : ComponentActivity() {
                     window.statusBarColor = Color.Transparent.toArgb()
                     window.navigationBarColor = Color.Transparent.toArgb()
                 }
-                PlayerRoot(viewModel = viewModel)
+                PlayerRoot(
+                    viewModel = viewModel,
+                    inPip = inPip.value,
+                    onEnterPip = ::enterPip,
+                    onPipEligible = ::setPipEligible,
+                )
             }
         }
+    }
+
+    private fun hasMediaPermission(): Boolean {
+        val p = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
+        return ContextCompat.checkSelfPermission(this, p) == PackageManager.PERMISSION_GRANTED
     }
 
     private fun maybeRequestPermissions() {
@@ -121,7 +172,12 @@ private const val PAGE_MUSIC = 1
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun PlayerRoot(viewModel: PlayerViewModel) {
+private fun PlayerRoot(
+    viewModel: PlayerViewModel,
+    inPip: Boolean,
+    onEnterPip: () -> Unit,
+    onPipEligible: (Boolean) -> Unit,
+) {
     val playerState by viewModel.playerState.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val library by viewModel.libraryItems.collectAsStateWithLifecycle()
@@ -134,6 +190,8 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
     val selectionMode by viewModel.selectionMode.collectAsStateWithLifecycle()
     val scanning by viewModel.scanning.collectAsStateWithLifecycle()
     val transcript by viewModel.transcriptState.collectAsStateWithLifecycle()
+    val savedTranscripts by viewModel.transcriptHistory.collectAsStateWithLifecycle()
+    val isFavorite by viewModel.isCurrentFavorite.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
     val landscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -150,11 +208,6 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
     var newPlaylistName by remember { mutableStateOf("") }
     val hazeState = remember { HazeState() }
 
-    val eqPanelLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult(),
-    ) {
-        viewModel.onSystemEqReturned()
-    }
     val onMusicPage by remember {
         derivedStateOf { pagerState.currentPage == PAGE_MUSIC }
     }
@@ -212,19 +265,9 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
         scope.launch { pagerState.animateScrollToPage(PAGE_VIDEO) }
     }
 
-    LaunchedEffect(allLibrary, playerState.queue.size, playerState.current) {
-        if (allLibrary.isNotEmpty() && playerState.queue.isEmpty() && playerState.current == null) {
-            viewModel.playDemoMusic()
-        }
-    }
-
-    LaunchedEffect(playerState.audioSessionId, playerState.isPlaying, playerState.isBuffering) {
-        // Rebind after the track is actually playing — do not broadcast OPEN_SESSION
-        // on every session change (that was stealing the session from ExoPlayer).
-        if (playerState.audioSessionId > 0 && playerState.isPlaying && !playerState.isBuffering) {
-            viewModel.rebindAudioEffects()
-        }
-    }
+    // Leaving the app while a video plays keeps it in a small floating window.
+    val pipNow = videoActive && playerState.isPlaying && playerState.current?.kind == MediaKind.VIDEO
+    LaunchedEffect(pipNow) { onPipEligible(pipNow) }
 
     LaunchedEffect(playerState.errorMessage) {
         val err = playerState.errorMessage ?: return@LaunchedEffect
@@ -255,6 +298,20 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
                 pagerState.animateScrollToPage(PAGE_MUSIC)
             }
         }
+    }
+
+    if (inPip) {
+        VideoPlayerScreen(
+            state = playerState,
+            player = viewModel.playerOrNull(),
+            active = true,
+            onPlayPause = viewModel::togglePlayPause,
+            onSeek = viewModel::seekTo,
+            onSeekBy = viewModel::seekBy,
+            onPickVideo = {},
+            inPip = true,
+        )
+        return
     }
 
     Box(
@@ -296,6 +353,7 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
                         onPickVideo = {
                             pickVideoLauncher.launch(arrayOf("video/*"))
                         },
+                        onEnterPip = onEnterPip,
                     )
                     else -> MusicPlayerScreen(
                         state = playerState,
@@ -310,6 +368,11 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
                         onOpenBottomMenu = {
                             if (onMusicPage) bottomOpen = true
                         },
+                        showRemaining = settings.showRemaining,
+                        onToggleRemaining = { viewModel.toggleShowRemaining() },
+                        isFavorite = isFavorite,
+                        onToggleFavorite = viewModel::toggleFavoriteCurrent,
+                        speed = settings.playbackSpeed,
                     )
                 }
             }
@@ -386,70 +449,49 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
                 BottomAudioDrawer(
                     visible = bottomOpen,
                     settings = settings,
-                    abLabel = playerState.abLabel,
                     abActive = playerState.abLoopActive,
-                    transcriptRunning = transcript.isRunning,
-                    transcriptDownloading = transcript.isDownloading,
-                    transcriptProgress = transcript.progress,
-                    transcriptStatusFa = transcript.statusFa,
-                    transcriptErrorFa = transcript.errorFa,
+                    abHalf = playerState.abPointAMs != null && playerState.abPointBMs == null,
+                    transcript = TranscriptUi(
+                        running = transcript.isRunning,
+                        downloading = transcript.isDownloading,
+                        progress = transcript.progress,
+                        status = transcript.statusFa,
+                        error = transcript.errorFa,
+                    ),
+                    saved = savedTranscripts.map { SavedTranscript(it.path, it.title, it.updatedAt) },
+                    actions = remember(viewModel) {
+                        AudioActions(
+                            onToggleTranscript = {
+                                if (viewModel.playerState.value.current == null) {
+                                    Toast.makeText(context, "اول یک آهنگ یا ویدیو پخش کنید", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    viewModel.toggleTranscription()
+                                }
+                            },
+                            onOpenSaved = { viewModel.openSavedTranscript(it.id) },
+                            onShareSaved = { t ->
+                                viewModel.readSavedTranscript(t.id)?.let { (title, body) -> shareText(context, title, body) }
+                            },
+                            onDeleteSaved = { viewModel.deleteSavedTranscript(it.id) },
+                            onRefreshSaved = viewModel::refreshTranscripts,
+                            onDialogue = { viewModel.setDialogueClarity(it) },
+                            onNightMode = { viewModel.setNightMode(it) },
+                            onSpeed = viewModel::setPlaybackSpeed,
+                            onKeepPitch = { viewModel.setKeepNaturalPitch(it) },
+                            onAbClick = {
+                                val msg = viewModel.tapAbLoop()
+                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                            },
+                            onEqEnabled = { viewModel.setEqEnabled(it) },
+                            onEqGain = { i, db -> viewModel.setEqGain(i, db) },
+                            onEqPreamp = { viewModel.setEqPreamp(it) },
+                            onEqPreset = { viewModel.applyEqPreset(it) },
+                            onTimerMinutes = viewModel::setSleepTimerMinutes,
+                            onTimerAtEnd = { viewModel.setSleepAtEnd() },
+                            onTimerOff = { viewModel.cancelSleep() },
+                        )
+                    },
                     onDismiss = { bottomOpen = false },
-                    onToggleTranscript = {
-                        if (playerState.current == null) {
-                            Toast.makeText(context, "رسانه‌ای در حال پخش نیست", Toast.LENGTH_SHORT).show()
-                        } else {
-                            viewModel.toggleTranscription()
-                        }
-                    },
-                    onOpenTranscriptFolder = {
-                        if (!viewModel.openTranscriptFolder()) {
-                            Toast.makeText(
-                                context,
-                                transcript.errorFa ?: "هنوز متنی ذخیره نشده است",
-                                Toast.LENGTH_SHORT,
-                            ).show()
-                        }
-                    },
-                    onNightMode = viewModel::setNightMode,
-                    onSpeedChange = viewModel::setPlaybackSpeed,
-                    onSpeedNudge = viewModel::nudgeSpeed,
-                    onAbClick = {
-                        val msg = viewModel.tapAbLoop()
-                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                    },
-                    onEnsureEqualizer = viewModel::ensureEqualizerAttached,
-                    onOpenSystemEq = {
-                        scope.launch {
-                            viewModel.ensureAudioSession()
-                            val intents = viewModel.prepareEqualizerIntents(context.packageName)
-                            if (intents.isEmpty()) {
-                                Toast.makeText(
-                                    context,
-                                    "ابتدا پخش را شروع کنید تا اکولایزر باز شود",
-                                    Toast.LENGTH_SHORT,
-                                ).show()
-                                return@launch
-                            }
-                            intents.getOrNull(0)?.let { open ->
-                                runCatching { context.sendBroadcast(open) }
-                            }
-                            val display = intents.getOrNull(1) ?: intents.last()
-                            val launched = runCatching {
-                                eqPanelLauncher.launch(display)
-                            }.isSuccess
-                            if (!launched) {
-                                viewModel.onSystemEqReturned()
-                                Toast.makeText(
-                                    context,
-                                    "هیچ پنل اکولایزری روی دستگاه نصب نیست — از اکولایزر داخل برنامه استفاده کنید",
-                                    Toast.LENGTH_LONG,
-                                ).show()
-                            }
-                        }
-                    },
-                    onEqBandChange = viewModel::setEqBand,
-                    onEqPreset = viewModel::applyEqPreset,
-                    onTimerChange = viewModel::setSleepTimerMinutes,
                     hazeState = hazeState,
                 )
             }

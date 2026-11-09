@@ -38,5 +38,8 @@ dependencies {
     api("androidx.media3:media3-common:$media3")
 
     // On-device ASR (media audio → text). Model downloaded once at runtime.
-    implementation("com.alphacephei:vosk-android:0.3.47")
+    // "@aar" so Gradle does not pull the desktop JNA jar (it has no Android native library);
+    // the Android JNA build is added on its own.
+    implementation("com.alphacephei:vosk-android:0.3.47@aar")
+    implementation("net.java.dev.jna:jna:5.13.0@aar")
 }

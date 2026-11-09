@@ -44,6 +44,10 @@ class MhjPlaybackService : MediaSessionService() {
     private var persistJob: Job? = null
     private lateinit var persistence: PlaybackPersistenceRepository
     private var restored = false
+    private val audio by lazy { com.mhj.player.core.playback.engine.AudioEngine(this) }
+    private val settingsStore by lazy { com.mhj.player.core.data.datastore.SettingsDataStore(this) }
+    private var sleepJob: Job? = null
+    @Volatile private var sleepAtEnd = false
 
     private val persistListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -79,6 +83,15 @@ class MhjPlaybackService : MediaSessionService() {
                 true,
             )
             exo.addListener(persistListener)
+            exo.addListener(sleepEndListener)
+
+            // Our own audio session from the start, so the sound effects attach once and stay.
+            runCatching {
+                val sid = androidx.media3.common.util.Util.generateAudioSessionIdV21(this)
+                exo.setAudioSessionId(sid)
+                audio.attach(sid)
+            }.onFailure { Log.e(TAG, "audio session", it) }
+            observeSettings(exo)
 
             val sessionActivity = packageManager.getLaunchIntentForPackage(packageName)?.let { intent ->
                 intent.flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -109,7 +122,59 @@ class MhjPlaybackService : MediaSessionService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? =
         mediaSession
 
+    /** Speed / pitch, sound effects and the sleep timer follow the saved settings. */
+    private fun observeSettings(exo: ExoPlayer) {
+        serviceScope.launch {
+            settingsStore.settings.collect { s ->
+                val pitch = if (s.keepNaturalPitch) 1f else s.playbackSpeed
+                val want = androidx.media3.common.PlaybackParameters(s.playbackSpeed, pitch)
+                if (exo.playbackParameters != want) exo.playbackParameters = want
+                if (exo.audioSessionId > 0) audio.attach(exo.audioSessionId)
+                audio.apply(s)
+                sleepAtEnd = s.sleepAtEnd
+                scheduleSleep(exo, s.sleepAtMs)
+            }
+        }
+    }
+
+    private var sleepTarget = 0L
+    private fun scheduleSleep(exo: ExoPlayer, at: Long) {
+        if (at == sleepTarget) return
+        sleepTarget = at
+        sleepJob?.cancel()
+        if (at <= 0L) return
+        sleepJob = serviceScope.launch {
+            val fadeMs = 8_000L
+            val wait = at - System.currentTimeMillis() - fadeMs
+            if (wait > 0) delay(wait)
+            // Fade out gently, pause, then put the volume back for next time.
+            val start = exo.volume
+            val steps = 40
+            for (i in 1..steps) {
+                exo.volume = start * (1f - i / steps.toFloat())
+                delay(fadeMs / steps)
+            }
+            exo.pause()
+            exo.volume = start
+            settingsStore.clearSleep()
+        }
+    }
+
+    /** "Stop at the end of this track": pause when the current item finishes. */
+    private val sleepEndListener = object : Player.Listener {
+        override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
+            if (sleepAtEnd && reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
+                player?.pause()
+                serviceScope.launch { settingsStore.clearSleep() }
+            }
+        }
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            if (sleepAtEnd && playbackState == Player.STATE_ENDED) serviceScope.launch { settingsStore.clearSleep() }
+        }
+    }
+
     override fun onDestroy() {
+        runCatching { audio.release() }
         runCatching { persistNow() }
         persistJob?.cancel()
         player?.removeListener(persistListener)
@@ -184,7 +249,7 @@ class MhjPlaybackService : MediaSessionService() {
                         album = meta.albumTitle?.toString().orEmpty(),
                         durationMs = 0L,
                         artworkUri = meta.artworkUri?.toString(),
-                        kind = MediaKind.MUSIC,
+                        kind = kindOf(meta),
                     ),
                 )
             }
@@ -199,7 +264,7 @@ class MhjPlaybackService : MediaSessionService() {
                 album = meta.albumTitle?.toString().orEmpty(),
                 durationMs = p.duration.coerceAtLeast(0L),
                 artworkUri = meta.artworkUri?.toString(),
-                kind = MediaKind.MUSIC,
+                kind = kindOf(meta),
             )
         }
         return PlaybackSnapshot(
@@ -247,6 +312,11 @@ class MhjPlaybackService : MediaSessionService() {
         exo.playWhenReady = false
         restored = true
     }
+
+    /** Keep music / video when the queue is saved (it was always saved as music). */
+    private fun kindOf(meta: androidx.media3.common.MediaMetadata): MediaKind =
+        meta.extras?.getString(com.mhj.player.core.playback.engine.MEDIA_KIND_EXTRA)
+            ?.let { runCatching { MediaKind.valueOf(it) }.getOrNull() } ?: MediaKind.MUSIC
 
     private data class PlaybackSnapshot(
         val queue: List<MediaItemModel>,

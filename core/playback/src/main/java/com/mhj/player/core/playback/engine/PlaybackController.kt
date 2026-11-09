@@ -174,7 +174,7 @@ class PlaybackController(
      * Returns a short status string for UI feedback.
      */
     fun tapAbLoop(): String {
-        val c = controller ?: return "No player"
+        val c = controller ?: return "اول یک آهنگ پخش کنید"
         val pos = c.currentPosition.coerceAtLeast(0L)
         val a = abPointAMs
         val b = abPointBMs
@@ -183,22 +183,22 @@ class PlaybackController(
                 abPointAMs = pos
                 abPointBMs = null
                 publish(c)
-                "A @ ${formatMs(pos)}"
+                "نقطهٔ A: ${formatMs(pos)} — حالا B را بزنید"
             }
             b == null -> {
                 if (pos <= a + 250L) {
-                    "Move forward for B"
+                    "نقطهٔ B باید بعد از A باشد"
                 } else {
                     abPointBMs = pos
                     publish(c)
-                    "A-B ${formatMs(a)}–${formatMs(pos)}"
+                    "تکرار از ${formatMs(a)} تا ${formatMs(pos)}"
                 }
             }
             else -> {
                 abPointAMs = null
                 abPointBMs = null
                 publish(c)
-                "A-B off"
+                "تکرار A-B خاموش شد"
             }
         }
     }

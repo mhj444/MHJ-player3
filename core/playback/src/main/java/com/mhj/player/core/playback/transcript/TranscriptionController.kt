@@ -43,8 +43,34 @@ class TranscriptionController(
     private val _state = MutableStateFlow(TranscriptionUiState())
     val state: StateFlow<TranscriptionUiState> = _state.asStateFlow()
 
+    private val _history = MutableStateFlow<List<TranscriptFileInfo>>(emptyList())
+    /** All saved transcripts, newest first. */
+    val history: StateFlow<List<TranscriptFileInfo>> = _history.asStateFlow()
+
+    fun refreshHistory() {
+        scope.launch(Dispatchers.IO) { _history.value = runCatching { store.listAll() }.getOrDefault(emptyList()) }
+    }
+
+    fun openSaved(info: TranscriptFileInfo) {
+        scope.launch(Dispatchers.IO) {
+            val text = store.readPath(info.path) ?: return@launch
+            _state.value = _state.value.copy(viewerText = text, viewerTitle = info.title, errorFa = null)
+        }
+    }
+
+    fun deleteSaved(info: TranscriptFileInfo) {
+        scope.launch(Dispatchers.IO) {
+            store.delete(info.path)
+            _history.value = runCatching { store.listAll() }.getOrDefault(emptyList())
+        }
+    }
+
+    fun readSaved(info: TranscriptFileInfo): String? = store.readPath(info.path)
+
     private var job: Job? = null
     @Volatile private var cancelRequested = false
+
+    init { refreshHistory() }
 
     fun toggleForMedia(mediaId: String, title: String, uri: String) {
         if (_state.value.isRunning && _state.value.activeMediaId == mediaId) {
@@ -90,7 +116,7 @@ class TranscriptionController(
                     val msg = when {
                         t.message == "offline" || !models.isOnline() ->
                             "آفلاین هستید و مدل فارسی هنوز دانلود نشده است."
-                        else -> "دانلود مدل فارسی ناموفق بود."
+                        else -> "دانلود مدل فارسی ناموفق بود (${t.message?.take(40) ?: "خطای شبکه"}). دوباره امتحان کنید."
                     }
                     _state.value = TranscriptionUiState(
                         isRunning = false,
@@ -199,7 +225,7 @@ class TranscriptionController(
                     activeMediaId = mediaId,
                 )
             }
-        }
+        }.also { it.invokeOnCompletion { refreshHistory() } }
     }
 
     /** Request cancel; the running job breaks decode and flushes finalResult into the txt. */

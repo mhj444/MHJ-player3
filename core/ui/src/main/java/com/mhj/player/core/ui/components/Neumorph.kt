@@ -1,6 +1,5 @@
 package com.mhj.player.core.ui.components
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -24,11 +23,8 @@ import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.mhj.player.core.ui.R
 import com.mhj.player.core.ui.theme.MhjColors
 import com.mhj.player.core.ui.theme.MhjTheme
 import dev.chrisbanes.haze.HazeState
@@ -146,44 +142,13 @@ fun Modifier.softGoldHalo(
     )
 }
 
+/** Page background, drawn in code (no picture); also the source of the frosted-glass blur. */
 @Composable
 fun BoardBackground(
     modifier: Modifier = Modifier,
     hazeState: HazeState? = null,
 ) {
-    val dark = MhjTheme.colors.isDark
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .then(if (hazeState != null) Modifier.hazeSource(hazeState) else Modifier),
-    ) {
-        Image(
-            painter = painterResource(
-                if (dark) R.drawable.bg_midnight_board else R.drawable.bg_porcelain_board,
-            ),
-            contentDescription = null,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop,
-        )
-        // Soft gold bloom behind album region only — keep top logo zone free of pale wash
-        if (dark) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .drawBehind {
-                        drawCircle(
-                            brush = Brush.radialGradient(
-                                listOf(Color(0x1AD4AF37), Color.Transparent),
-                                center = Offset(size.width / 2f, size.height * 0.36f),
-                                radius = size.minDimension * 0.40f,
-                            ),
-                            center = Offset(size.width / 2f, size.height * 0.36f),
-                            radius = size.minDimension * 0.40f,
-                        )
-                    },
-            )
-        }
-    }
+    DrawnBackground(modifier.then(if (hazeState != null) Modifier.hazeSource(hazeState) else Modifier))
 }
 
 @Composable

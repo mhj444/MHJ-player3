@@ -9,7 +9,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
+import com.mhj.player.core.ui.R
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.mhj.player.core.model.AppTheme
@@ -23,40 +25,49 @@ object MhjTheme {
         get() = LocalMhjColors.current
 }
 
+/** Vazirmatn: clear Persian letters and digits. */
+val Vazir = FontFamily(
+    Font(R.font.vazir_regular, FontWeight.Normal),
+    Font(R.font.vazir_regular, FontWeight.Medium),
+    Font(R.font.vazir_semibold, FontWeight.SemiBold),
+    Font(R.font.vazir_bold, FontWeight.Bold),
+    Font(R.font.vazir_black, FontWeight.Black),
+)
+
 private val MhjTypography = Typography(
     displayLarge = TextStyle(
-        fontFamily = FontFamily.Serif,
+        fontFamily = Vazir,
         fontWeight = FontWeight.Bold,
         fontSize = 34.sp,
         letterSpacing = 0.5.sp,
     ),
     headlineMedium = TextStyle(
-        fontFamily = FontFamily.SansSerif,
+        fontFamily = Vazir,
         fontWeight = FontWeight.SemiBold,
         fontSize = 22.sp,
     ),
     titleLarge = TextStyle(
-        fontFamily = FontFamily.SansSerif,
+        fontFamily = Vazir,
         fontWeight = FontWeight.SemiBold,
         fontSize = 20.sp,
     ),
     titleMedium = TextStyle(
-        fontFamily = FontFamily.SansSerif,
+        fontFamily = Vazir,
         fontWeight = FontWeight.Medium,
         fontSize = 16.sp,
     ),
     bodyLarge = TextStyle(
-        fontFamily = FontFamily.SansSerif,
+        fontFamily = Vazir,
         fontWeight = FontWeight.Normal,
         fontSize = 16.sp,
     ),
     bodyMedium = TextStyle(
-        fontFamily = FontFamily.SansSerif,
+        fontFamily = Vazir,
         fontWeight = FontWeight.Normal,
         fontSize = 14.sp,
     ),
     labelLarge = TextStyle(
-        fontFamily = FontFamily.SansSerif,
+        fontFamily = Vazir,
         fontWeight = FontWeight.Medium,
         fontSize = 13.sp,
         letterSpacing = 0.4.sp,
@@ -98,10 +109,9 @@ fun MhjPlayerTheme(
     }
 
     CompositionLocalProvider(LocalMhjColors provides colors) {
-        MaterialTheme(
-            colorScheme = scheme,
-            typography = MhjTypography,
-            content = content,
-        )
+        MaterialTheme(colorScheme = scheme, typography = MhjTypography) {
+            // Every Text without its own style gets Vazir too.
+            androidx.compose.material3.ProvideTextStyle(TextStyle(fontFamily = Vazir), content)
+        }
     }
 }

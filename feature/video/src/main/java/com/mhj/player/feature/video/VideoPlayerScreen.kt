@@ -28,10 +28,29 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Forward10
+import androidx.compose.material.icons.outlined.Pause
+import androidx.compose.material.icons.outlined.PictureInPictureAlt
+import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.Replay10
+import androidx.compose.material.icons.outlined.VideoLibrary
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Forward10
+import androidx.compose.material.icons.outlined.Pause
+import androidx.compose.material.icons.outlined.PictureInPictureAlt
+import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.Replay10
+import androidx.compose.material.icons.outlined.VideoLibrary
+import androidx.compose.material3.Icon
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -62,7 +81,8 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.mhj.player.core.model.MediaKind
 import com.mhj.player.core.model.PlayerUiState
-import com.mhj.player.core.ui.R
+import com.mhj.player.core.ui.components.Fa
+import com.mhj.player.core.ui.components.RaisedPill
 import com.mhj.player.core.ui.components.softEmboss
 import com.mhj.player.core.ui.theme.MhjColors
 import com.mhj.player.core.ui.theme.MhjTheme
@@ -82,6 +102,8 @@ fun VideoPlayerScreen(
     onSeekBy: (Long) -> Unit,
     onPickVideo: () -> Unit,
     modifier: Modifier = Modifier,
+    inPip: Boolean = false,
+    onEnterPip: () -> Unit = {},
 ) {
     val colors = MhjTheme.colors
     val context = LocalContext.current
@@ -112,6 +134,7 @@ fun VideoPlayerScreen(
     var brightnessFraction by remember { mutableFloatStateOf(0.5f) }
 
     val playing = state.isPlaying
+    var seekDrag by remember { mutableStateOf<Float?>(null) }
     val bumpHide = rememberUpdatedState {
         hideGeneration += 1
         chromeVisible = true
@@ -162,7 +185,7 @@ fun VideoPlayerScreen(
             (volumeFraction * max).roundToInt().coerceIn(0, max),
             0,
         )
-        showHud(GestureHud.Volume, "صدا ${(volumeFraction * 100).roundToInt()}٪")
+        showHud(GestureHud.Volume, "صدا " + Fa.num((volumeFraction * 100).roundToInt()) + "٪")
     }
 
     fun applyBrightnessDelta(deltaY: Float, height: Float) {
@@ -172,16 +195,14 @@ fun VideoPlayerScreen(
         val lp = window.attributes
         lp.screenBrightness = brightnessFraction
         window.attributes = lp
-        showHud(GestureHud.Brightness, "روشنایی ${(brightnessFraction * 100).roundToInt()}٪")
+        showHud(GestureHud.Brightness, "روشنایی " + Fa.num((brightnessFraction * 100).roundToInt()) + "٪")
     }
 
     fun applySeekDelta(deltaX: Float, width: Float) {
         // Finger left→right (positive dx) seeks forward
         val seconds = ((deltaX / width) * 90f) // ~90s full-width
         seekAccumMs += (seconds * 1000f).toLong()
-        val labelSec = seekAccumMs / 1000.0
-        val sign = if (labelSec >= 0) "+" else ""
-        showHud(GestureHud.Seek, "جابه‌جایی $sign${"%.1f".format(labelSec)}s")
+        showHud(GestureHud.Seek, (if (seekAccumMs >= 0) "جلو " else "عقب ") + Fa.time(kotlin.math.abs(seekAccumMs)))
     }
 
     LaunchedEffect(hud) {
@@ -190,6 +211,8 @@ fun VideoPlayerScreen(
         hud = GestureHud.None
     }
 
+    // Video controls always run left-to-right (back on the left, forward on the right).
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -207,7 +230,7 @@ fun VideoPlayerScreen(
         }
 
         // Gesture layer — landscape owns seek/volume/brightness; tap toggles chrome
-        if (hasVideo) {
+        if (hasVideo && !inPip) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -283,7 +306,6 @@ fun VideoPlayerScreen(
                 color = MhjColors.GoldHi,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.SemiBold,
-                fontFamily = FontFamily.Serif,
                 modifier = Modifier
                     .clip(RoundedCornerShape(16.dp))
                     .background(Color(0xCC14110E))
@@ -293,7 +315,7 @@ fun VideoPlayerScreen(
         }
 
         AnimatedVisibility(
-            visible = chromeVisible || !hasVideo,
+            visible = !inPip && (chromeVisible || !hasVideo),
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier.align(Alignment.TopCenter),
@@ -311,24 +333,26 @@ fun VideoPlayerScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    "Video",
+                    state.current?.takeIf { hasVideo }?.title ?: "ویدیو",
                     color = MhjColors.GoldHi,
-                    fontFamily = FontFamily.Serif,
                     fontWeight = FontWeight.SemiBold,
-                    fontSize = 18.sp,
+                    fontSize = 17.sp,
+                    maxLines = 1,
+                    modifier = Modifier.weight(1f),
                 )
+                if (hasVideo) {
+                    VideoChip(onClick = { onEnterPip() }) {
+                        Icon(Icons.Outlined.PictureInPictureAlt, "پنجرهٔ کوچک", tint = MhjColors.GoldHi, modifier = Modifier.size(21.dp))
+                    }
+                    Spacer(Modifier.width(10.dp))
+                }
                 VideoChip(
                     onClick = {
                         bumpHide.value.invoke()
                         onPickVideo()
                     },
                 ) {
-                    Image(
-                        painter = painterResource(R.drawable.icon_mid_library),
-                        contentDescription = "Open video",
-                        modifier = Modifier.size(20.dp),
-                        contentScale = ContentScale.Fit,
-                    )
+                    Icon(Icons.Outlined.VideoLibrary, "باز کردن ویدیو", tint = MhjColors.GoldHi, modifier = Modifier.size(21.dp))
                 }
             }
         }
@@ -338,32 +362,23 @@ fun VideoPlayerScreen(
                 modifier = Modifier.align(Alignment.Center).padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text("Video space", color = colors.primary, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+                Text("فضای ویدیو", color = colors.primary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Pick a video file to play",
+                    "یک ویدیو انتخاب کنید یا از کتابخانه بزنید",
                     color = colors.muted,
                     fontSize = 14.sp,
                 )
                 Spacer(Modifier.height(16.dp))
-                Text(
-                    "Open video",
-                    color = MhjColors.GoldHi,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(16.dp))
-                        .border(1.dp, MhjColors.Gold, RoundedCornerShape(16.dp))
-                        .clickable {
-                            bumpHide.value.invoke()
-                            onPickVideo()
-                        }
-                        .padding(horizontal = 18.dp, vertical = 12.dp),
-                )
+                RaisedPill("باز کردن ویدیو") {
+                    bumpHide.value.invoke()
+                    onPickVideo()
+                }
             }
         }
 
         AnimatedVisibility(
-            visible = hasVideo && chromeVisible,
+            visible = !inPip && hasVideo && chromeVisible,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier.align(Alignment.BottomCenter),
@@ -382,14 +397,6 @@ fun VideoPlayerScreen(
                         detectTapGestures { bumpHide.value.invoke() }
                     },
             ) {
-                Text(
-                    state.current?.title.orEmpty(),
-                    color = Color.White,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                )
-                Spacer(Modifier.height(8.dp))
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth(),
@@ -400,14 +407,7 @@ fun VideoPlayerScreen(
                             onPlayPause()
                         },
                     ) {
-                        Image(
-                            painter = painterResource(
-                                if (state.isPlaying) R.drawable.icon_mid_pause else R.drawable.icon_mid_play,
-                            ),
-                            contentDescription = "Play pause",
-                            modifier = Modifier.size(22.dp),
-                            contentScale = ContentScale.Fit,
-                        )
+                        Icon(if (state.isPlaying) Icons.Outlined.Pause else Icons.Outlined.PlayArrow, if (state.isPlaying) "توقف" else "پخش", tint = MhjColors.GoldHi, modifier = Modifier.size(24.dp))
                     }
                     Spacer(Modifier.width(10.dp))
                     VideoChip(
@@ -416,22 +416,21 @@ fun VideoPlayerScreen(
                             onSeekBy(-10_000)
                         },
                     ) {
-                        Image(
-                            painter = painterResource(R.drawable.icon_mid_prev),
-                            contentDescription = "Seek back",
-                            modifier = Modifier.size(20.dp),
-                            contentScale = ContentScale.Fit,
-                        )
+                        Icon(Icons.Outlined.Replay10, "۱۰ ثانیه عقب", tint = MhjColors.GoldHi, modifier = Modifier.size(22.dp))
                     }
                     Spacer(Modifier.width(12.dp))
                     val duration = state.durationMs.coerceAtLeast(0L)
                     val position = state.positionMs.coerceIn(0L, if (duration > 0) duration else Long.MAX_VALUE)
                     Column(Modifier.weight(1f)) {
                         Slider(
-                            value = if (duration > 0) position.toFloat() / duration else 0f,
+                            value = seekDrag ?: if (duration > 0) position.toFloat() / duration else 0f,
                             onValueChange = { frac ->
                                 bumpHide.value.invoke()
-                                if (duration > 0) onSeek((frac * duration).toLong())
+                                seekDrag = frac
+                            },
+                            onValueChangeFinished = {
+                                seekDrag?.let { if (duration > 0) onSeek((it * duration).toLong()) }
+                                seekDrag = null
                             },
                             colors = SliderDefaults.colors(
                                 thumbColor = MhjColors.GoldHi,
@@ -443,27 +442,23 @@ fun VideoPlayerScreen(
                             Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
-                            Text(formatTime(position), color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp)
-                            Text(formatTime(duration), color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp)
+                            Text(Fa.time(seekDrag?.let { (it * duration).toLong() } ?: position), color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp)
+                            Text(Fa.time(duration), color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp)
                         }
                     }
                     Spacer(Modifier.width(10.dp))
                     VideoChip(
                         onClick = {
                             bumpHide.value.invoke()
-                            onPickVideo()
+                            onSeekBy(10_000)
                         },
                     ) {
-                        Image(
-                            painter = painterResource(R.drawable.icon_mid_library),
-                            contentDescription = "Open video",
-                            modifier = Modifier.size(20.dp),
-                            contentScale = ContentScale.Fit,
-                        )
+                        Icon(Icons.Outlined.Forward10, "۱۰ ثانیه جلو", tint = MhjColors.GoldHi, modifier = Modifier.size(22.dp))
                     }
                 }
             }
         }
+    }
     }
 }
 
@@ -481,8 +476,3 @@ private fun VideoChip(onClick: () -> Unit, content: @Composable () -> Unit) {
     ) { content() }
 }
 
-private fun formatTime(ms: Long): String {
-    if (ms <= 0L) return "0:00"
-    val total = (ms / 1000L).toInt()
-    return "%d:%02d".format(total / 60, total % 60)
-}

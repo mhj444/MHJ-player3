@@ -61,6 +61,25 @@ class TranscriptStore(context: Context) {
             .orEmpty()
     }
 
+    fun readPath(path: String): String? = File(path).takeIf { it.exists() && it.parentFile == root }?.readText()
+
+    fun delete(path: String): Boolean {
+        val f = File(path)
+        if (f.parentFile != root || !f.exists()) return false
+        val ok = f.delete()
+        runCatching {
+            val json = getIndex()
+            json.optJSONObject("meta")?.remove(f.name)
+            val files = json.optJSONObject("files")
+            if (files != null) {
+                val drop = files.keys().asSequence().filter { files.optString(it) == f.name }.toList()
+                drop.forEach { files.remove(it) }
+            }
+            indexFile.writeText(json.toString())
+        }
+        return ok
+    }
+
     private fun getIndex(): JSONObject {
         if (!indexFile.exists()) return JSONObject().put("files", JSONObject()).put("meta", JSONObject())
         return runCatching { JSONObject(indexFile.readText()) }.getOrElse {

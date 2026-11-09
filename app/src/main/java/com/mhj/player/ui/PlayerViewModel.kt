@@ -15,8 +15,8 @@ import com.mhj.player.core.model.MediaItemModel
 import com.mhj.player.core.model.MediaKind
 import com.mhj.player.core.model.PlayerUiState
 import com.mhj.player.core.model.PlaylistModel
-import com.mhj.player.core.playback.engine.AudioEffectsController
 import com.mhj.player.core.playback.engine.PlaybackController
+import com.mhj.player.core.playback.transcript.TranscriptFileInfo
 import com.mhj.player.core.playback.transcript.TranscriptionController
 import com.mhj.player.core.playback.transcript.TranscriptionUiState
 import com.mhj.player.di.AppContainer
@@ -39,8 +39,6 @@ class PlayerViewModel(
     private val scanner: MediaLibraryScanner,
     private val transcription: TranscriptionController,
 ) : ViewModel() {
-
-    private val audioEffects = AudioEffectsController()
 
     val playerState: StateFlow<PlayerUiState> = playback.state
     val settings: StateFlow<AppSettings> = settingsStore.settings
@@ -107,52 +105,6 @@ class PlayerViewModel(
             library.ensureFavoritesPlaylistId()
         }
         viewModelScope.launch {
-            // Remember the live session id only after READY — do not attach Equalizer
-            // until the user actually needs effects (band move / night / EQ page).
-            // Attaching Equalizer during prepare() was silencing playback after bdf3817.
-            playback.state
-                .map { Triple(it.audioSessionId, it.isPlaying, it.isBuffering) }
-                .distinctUntilChanged()
-                .collect { (sessionId, isPlaying, isBuffering) ->
-                    if (sessionId <= 0 || isBuffering) return@collect
-                    kotlinx.coroutines.delay(200)
-                    val live = audioSessionId()
-                    if (live <= 0) return@collect
-                    val s = settings.value
-                    val wantsFx = s.nightModeAudio || s.eqBands.any { kotlin.math.abs(it) > 0.01f }
-                    if (wantsFx) {
-                        audioEffects.bindSession(live)
-                        if (!audioEffects.effectsDisabled) {
-                            audioEffects.setBandLevels(s.eqBands.toFloatArray())
-                            audioEffects.setNightMode(s.nightModeAudio)
-                        }
-                    } else {
-                        // Keep session id tracked without enabling an effect chain
-                        audioEffects.bindSessionLazy(live)
-                    }
-                    if (isPlaying) {
-                        android.util.Log.i(
-                            "Playback",
-                            "session=$live playing wantsFx=$wantsFx eqDisabled=${audioEffects.effectsDisabled}",
-                        )
-                    }
-                }
-        }
-        viewModelScope.launch {
-            settingsStore.settings
-                .map { it.nightModeAudio to it.eqBands }
-                .distinctUntilChanged()
-                .collect { (night, bands) ->
-                    if (audioEffects.effectsDisabled) return@collect
-                    val live = audioSessionId()
-                    if (live > 0 && (night || bands.any { kotlin.math.abs(it) > 0.01f })) {
-                        audioEffects.bindSession(live)
-                    }
-                    audioEffects.setNightMode(night)
-                    audioEffects.setBandLevels(bands.toFloatArray())
-                }
-        }
-        viewModelScope.launch {
             // Increment play count when the current media id changes while playing
             var lastId: String? = null
             playback.state.collect { state ->
@@ -173,10 +125,6 @@ class PlayerViewModel(
         }
     }
 
-    override fun onCleared() {
-        audioEffects.release()
-        super.onCleared()
-    }
 
     fun playDemoMusic() {
         viewModelScope.launch {
@@ -222,86 +170,30 @@ class PlayerViewModel(
 
     fun tapAbLoop(): String = playback.tapAbLoop()
 
-    /** Ensure a live non-zero audio session while playing. */
-    suspend fun ensureAudioSession(): Int {
-        var session = audioSessionId()
-        if (session > 0) {
-            audioEffects.bindSession(session)
-            audioEffects.setBandLevels(settings.value.eqBands.toFloatArray())
-            return session
-        }
-        playback.awaitConnected()
-        if (!playerState.value.isPlaying && playerState.value.current != null) {
-            playback.togglePlayPause()
-        } else if (playerState.value.current == null) {
-            val queue = allLibraryItems.value.filter { it.kind == MediaKind.MUSIC }
-            if (queue.isNotEmpty()) playback.play(queue, 0)
-        }
-        repeat(20) {
-            kotlinx.coroutines.delay(50)
-            session = audioSessionId()
-            if (session > 0) {
-                audioEffects.bindSession(session)
-                audioEffects.setBandLevels(settings.value.eqBands.toFloatArray())
-                return session
-            }
-        }
-        return audioSessionId()
-    }
+    // ---- Sound (applied by the playback service, so it keeps working with the screen off) ----
 
-    /**
-     * Bind the live audio session and return OPEN_SESSION + DISPLAY intents.
-     * Releases our Equalizer temporarily so MusicFX can attach; call [onSystemEqReturned] after.
-     */
-    suspend fun prepareEqualizerIntents(packageName: String): List<Intent> {
-        val session = ensureAudioSession()
-        if (session <= 0) return emptyList()
-        return audioEffects.buildEqualizerIntents(packageName)
-    }
-
-    fun onSystemEqReturned() {
-        audioEffects.restoreAfterSystemPanel()
-        audioEffects.setBandLevels(settings.value.eqBands.toFloatArray())
-        audioEffects.setNightMode(settings.value.nightModeAudio)
-    }
-
-    fun setEqBand(index: Int, value: Float) {
-        viewModelScope.launch {
-            val next = settings.value.eqBands.toMutableList()
-            while (next.size < 5) next.add(0f)
-            if (index in next.indices) next[index] = value.coerceIn(-1f, 1f)
-            val live = audioSessionId()
-            if (live > 0) audioEffects.bindSession(live)
-            if (!audioEffects.effectsDisabled) {
-                audioEffects.setBandLevels(next.toFloatArray())
-            }
-            settingsStore.setEqBands(next)
+    fun setEqGain(index: Int, db: Float) = viewModelScope.launch {
+        settingsStore.update { st ->
+            val g = st.eqGains.toMutableList()
+            if (index in g.indices) g[index] = db.coerceIn(-com.mhj.player.core.model.Eq.MAX_DB, com.mhj.player.core.model.Eq.MAX_DB)
+            st.copy(eqGains = g, eqPreset = "custom")
         }
     }
 
-    fun applyEqPreset(name: String) {
-        viewModelScope.launch {
-            val live = audioSessionId()
-            if (live > 0) audioEffects.bindSession(live)
-            if (!audioEffects.effectsDisabled) {
-                audioEffects.applyPreset(name)
-                settingsStore.setEqBands(audioEffects.currentBands().toList())
-            }
-        }
+    fun setEqPreamp(db: Float) = viewModelScope.launch { settingsStore.update { it.copy(eqPreamp = db.coerceIn(-12f, 6f)) } }
+
+    fun applyEqPreset(id: String) = viewModelScope.launch {
+        val p = com.mhj.player.core.model.Eq.PRESETS.firstOrNull { it.id == id } ?: return@launch
+        settingsStore.update { it.copy(eqGains = p.gains, eqPreset = p.id, eqEnabled = true) }
     }
 
-    /** Call when the in-app EQ page is opened so the live session is ready for band edits. */
-    fun ensureEqualizerAttached() {
-        viewModelScope.launch {
-            val live = ensureAudioSession()
-            if (live > 0) {
-                audioEffects.bindSession(live)
-                if (!audioEffects.effectsDisabled) {
-                    audioEffects.setBandLevels(settings.value.eqBands.toFloatArray())
-                }
-            }
-        }
-    }
+    fun setEqEnabled(on: Boolean) = viewModelScope.launch { settingsStore.update { it.copy(eqEnabled = on) } }
+
+    fun setDialogueClarity(on: Boolean) = viewModelScope.launch { settingsStore.setDialogueClarity(on) }
+
+    fun setKeepNaturalPitch(on: Boolean) = viewModelScope.launch { settingsStore.setKeepNaturalPitch(on) }
+
+    fun toggleShowRemaining() = viewModelScope.launch { settingsStore.update { it.copy(showRemaining = !it.showRemaining) } }
 
     fun toggleFavoriteCurrent() {
         val id = playerState.value.current?.id ?: return
@@ -328,38 +220,7 @@ class PlayerViewModel(
         }
     }
 
-    fun setNightMode(enabled: Boolean) {
-        viewModelScope.launch {
-            val session = audioSessionId()
-            if (enabled && session > 0) {
-                audioEffects.bindSession(session)
-            }
-            if (!audioEffects.effectsDisabled) {
-                audioEffects.setNightMode(enabled)
-                audioEffects.setBandLevels(settings.value.eqBands.toFloatArray())
-            }
-            settingsStore.setNightModeAudio(enabled)
-        }
-    }
-
-    /** Re-attach AudioEffect chain to the live ExoPlayer session without rewriting prefs. */
-    fun rebindAudioEffects() {
-        val session = audioSessionId()
-        if (session <= 0) return
-        val s = settings.value
-        val wantsFx = s.nightModeAudio || s.eqBands.any { kotlin.math.abs(it) > 0.01f }
-        if (!wantsFx) {
-            audioEffects.bindSessionLazy(session)
-            return
-        }
-        audioEffects.bindSession(session)
-        if (audioEffects.effectsDisabled) return
-        audioEffects.setNightMode(s.nightModeAudio)
-        audioEffects.setBandLevels(s.eqBands.toFloatArray())
-    }
-
-    fun advertiseAudioSession(packageName: String): Intent? =
-        audioEffects.openSessionBroadcast(packageName)
+    fun setNightMode(enabled: Boolean) = viewModelScope.launch { settingsStore.setNightModeAudio(enabled) }
 
     fun toggleTranscription() {
         val current = playerState.value.current ?: return
@@ -374,6 +235,20 @@ class PlayerViewModel(
 
     fun dismissTranscriptViewer() = transcription.dismissViewer()
 
+    val transcriptHistory: StateFlow<List<TranscriptFileInfo>> = transcription.history
+    fun refreshTranscripts() = transcription.refreshHistory()
+    fun openSavedTranscript(path: String) {
+        transcription.history.value.firstOrNull { it.path == path }?.let(transcription::openSaved)
+    }
+    fun deleteSavedTranscript(path: String) {
+        transcription.history.value.firstOrNull { it.path == path }?.let(transcription::deleteSaved)
+    }
+    fun readSavedTranscript(path: String): Pair<String, String>? {
+        val info = transcription.history.value.firstOrNull { it.path == path } ?: return null
+        val text = transcription.readSaved(info) ?: return null
+        return info.title to text
+    }
+
     fun bumpSpeed() {
         viewModelScope.launch {
             val speeds = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f, 2.5f, 3.0f)
@@ -386,9 +261,9 @@ class PlayerViewModel(
 
     fun setPlaybackSpeed(speed: Float) {
         viewModelScope.launch {
-            val clamped = speed.coerceIn(0.25f, 3.0f)
+            // Snap to 0.05 steps so the dial lands on round numbers.
+            val clamped = (Math.round(speed.coerceIn(0.25f, 3.0f) * 20f) / 20f)
             settingsStore.setPlaybackSpeed(clamped)
-            playback.setSpeed(clamped)
         }
     }
 
@@ -405,11 +280,13 @@ class PlayerViewModel(
         }
     }
 
+    /** 0 = off; otherwise playback fades out and pauses after this many minutes. */
     fun setSleepTimerMinutes(minutes: Int) {
-        viewModelScope.launch {
-            settingsStore.setSleepTimerMinutes(minutes.coerceIn(0, 120))
-        }
+        viewModelScope.launch { settingsStore.setSleepTimerMinutes(minutes.coerceIn(0, 180)) }
     }
+
+    fun setSleepAtEnd() = viewModelScope.launch { settingsStore.setSleepAtEnd(true) }
+    fun cancelSleep() = viewModelScope.launch { settingsStore.clearSleep() }
 
     fun updateFilter(transform: (LibraryFilter) -> LibraryFilter) {
         libraryFilter.value = transform(libraryFilter.value)
