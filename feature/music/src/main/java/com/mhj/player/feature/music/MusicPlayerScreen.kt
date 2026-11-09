@@ -71,6 +71,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -344,11 +347,18 @@ private fun PlayButton(playing: Boolean, buffering: Boolean, onClick: () -> Unit
     val pressed by src.collectIsPressedAsState()
     val size: Dp = 82.dp
     Box(Modifier.size(size + 26.dp), contentAlignment = Alignment.Center) {
+        // One smooth, unbroken glow: a blurred gold circle (dithered so it fades without steps).
+        val glowAlpha by androidx.compose.animation.core.animateFloatAsState(if (playing) 0.55f else 0.38f, tween(500), label = "g")
         Canvas(Modifier.fillMaxSize()) {
-            drawCircle(
-                Brush.radialGradient(listOf(MhjColors.Gold.copy(alpha = if (playing) 0.45f else 0.3f), MhjColors.Gold.copy(alpha = 0.08f), Color.Transparent)),
-                radius = this.size.minDimension / 2,
-            )
+            drawIntoCanvas { cv ->
+                val p = android.graphics.Paint().apply {
+                    isAntiAlias = true
+                    isDither = true
+                    color = MhjColors.Gold.copy(alpha = glowAlpha).toArgb()
+                    maskFilter = android.graphics.BlurMaskFilter(22.dp.toPx(), android.graphics.BlurMaskFilter.Blur.NORMAL)
+                }
+                cv.nativeCanvas.drawCircle(center.x, center.y, (this.size.minDimension - 26.dp.toPx()) / 2f + 2.dp.toPx(), p)
+            }
         }
         Box(
             Modifier
