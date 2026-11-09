@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import org.vosk.Model
 import org.vosk.Recognizer
@@ -28,7 +29,8 @@ data class TranscriptionUiState(
 
 /**
  * On-device ASR of the currently playing media file (not the microphone) via Vosk.
- * Streams a capped PCM window so long audiobooks cannot hang on «آماده‌سازی صدا».
+ * Streams the full file as PCM chunks on a background coroutine — never loads all
+ * samples into an ArrayList — and appends each finished utterance to the same txt.
  */
 class TranscriptionController(
     context: Context,
@@ -54,9 +56,17 @@ class TranscriptionController(
     }
 
     fun start(mediaId: String, title: String, uri: String) {
-        cancelRequested = false
-        job?.cancel()
+        val previous = job
+        // Ask any in-flight job to stop+flush, then wait briefly before replacing it
+        if (previous?.isActive == true) {
+            cancelRequested = true
+        }
         job = scope.launch(Dispatchers.IO) {
+            if (previous?.isActive == true) {
+                withTimeoutOrNull(8_000) { previous.join() }
+                if (previous.isActive) previous.cancel()
+            }
+            cancelRequested = false
             try {
                 if (uri.isBlank()) error("آدرس فایل خالی است")
                 _state.value = TranscriptionUiState(
@@ -98,7 +108,7 @@ class TranscriptionController(
 
                 _state.value = _state.value.copy(
                     isDownloading = false,
-                    progress = 0.08f,
+                    progress = 0.02f,
                     statusFa = "در حال آماده‌سازی صدا…",
                 )
 
@@ -117,9 +127,7 @@ class TranscriptionController(
                             if (cancelRequested || !isActive) return@decodeStreaming
                             if (!gotPcm) {
                                 gotPcm = true
-                                _state.value = _state.value.copy(
-                                    statusFa = "در حال تبدیل به متن…",
-                                )
+                                _state.value = _state.value.copy(statusFa = "در حال نوشتن…")
                             }
                             val accepted = recognizer.acceptWaveForm(bytes, len)
                             if (accepted) {
@@ -127,26 +135,27 @@ class TranscriptionController(
                                 if (text.isNotBlank()) {
                                     store.appendParagraph(mediaId, title, text)
                                     wroteAny = true
+                                    val pct = (_state.value.progress * 100).toInt().coerceIn(0, 99)
                                     _state.value = _state.value.copy(
-                                        statusFa = "در حال نوشتن متن…",
+                                        statusFa = "در حال نوشتن… $pct٪",
                                     )
                                 }
                             }
                         },
                         onProgress = { p ->
+                            val pct = (p * 100).toInt().coerceIn(0, 99)
                             _state.value = _state.value.copy(
-                                progress = 0.08f + p * 0.75f,
+                                progress = p.coerceIn(0f, 0.99f),
                                 statusFa = when {
-                                    wroteAny -> "در حال نوشتن متن… ${(p * 100).toInt()}٪"
-                                    gotPcm -> "در حال تبدیل به متن… ${(p * 100).toInt()}٪"
-                                    else -> "در حال آماده‌سازی صدا… ${(p * 100).toInt()}٪"
+                                    wroteAny || gotPcm -> "در حال نوشتن… $pct٪"
+                                    else -> "در حال آماده‌سازی صدا… $pct٪"
                                 },
                             )
                         },
                         isCancelled = { cancelRequested || !isActive },
-                        maxSeconds = MediaPcmDecoder.MAX_SECONDS,
                     )
 
+                    // Stop / EOS: flush remaining hypothesis into the same txt
                     val finalText = extractText(recognizer.finalResult)
                     if (finalText.isNotBlank()) {
                         store.appendParagraph(mediaId, title, finalText)
@@ -160,7 +169,7 @@ class TranscriptionController(
                 if (cancelRequested) {
                     _state.value = TranscriptionUiState(
                         isRunning = false,
-                        progress = 1f,
+                        progress = _state.value.progress.coerceAtLeast(0.01f),
                         statusFa = "متوقف شد",
                         activeMediaId = mediaId,
                     )
@@ -193,6 +202,7 @@ class TranscriptionController(
         }
     }
 
+    /** Request cancel; the running job breaks decode and flushes finalResult into the txt. */
     fun stop() {
         cancelRequested = true
         _state.value = _state.value.copy(statusFa = "در حال توقف…")

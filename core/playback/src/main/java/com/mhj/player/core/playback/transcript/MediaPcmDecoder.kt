@@ -11,18 +11,17 @@ import java.nio.ByteOrder
 
 /**
  * Streams decoded 16-bit mono PCM @ 16 kHz from a content/file/http URI for ASR.
- * Caps decode length so long audiobooks cannot hang the UI forever.
+ * Never buffers the whole file — each codec output buffer is downmixed/resampled
+ * and handed to [onPcmChunk] immediately.
  */
 object MediaPcmDecoder {
     const val TARGET_SAMPLE_RATE = 16_000
-    /** Enough audio to prove ASR without decoding an entire book. */
-    const val MAX_SECONDS = 30
 
     private const val TAG = "MediaPcmDecoder"
 
     /**
-     * Decode up to [MAX_SECONDS] of audio, invoking [onPcmChunk] with little-endian PCM16 bytes.
-     * Returns total PCM samples delivered (mono).
+     * Decode the full audio stream, invoking [onPcmChunk] with little-endian PCM16 bytes
+     * for each output buffer. Returns total PCM samples delivered (mono).
      */
     fun decodeStreaming(
         context: Context,
@@ -30,7 +29,6 @@ object MediaPcmDecoder {
         onPcmChunk: (ByteArray, Int) -> Unit,
         onProgress: (Float) -> Unit = {},
         isCancelled: () -> Boolean = { false },
-        maxSeconds: Int = MAX_SECONDS,
     ): Int {
         val extractor = MediaExtractor()
         var codec: MediaCodec? = null
@@ -47,7 +45,6 @@ object MediaPcmDecoder {
             } else {
                 0L
             }
-            val maxUs = maxSeconds * 1_000_000L
             codec = MediaCodec.createDecoderByType(mime).also {
                 it.configure(format, null, null, 0)
                 it.start()
@@ -59,41 +56,31 @@ object MediaPcmDecoder {
             var inSampleRate = format.intOr(MediaFormat.KEY_SAMPLE_RATE, TARGET_SAMPLE_RATE)
             var channelCount = format.intOr(MediaFormat.KEY_CHANNEL_COUNT, 1)
             var totalOutSamples = 0
-            val maxSamples = TARGET_SAMPLE_RATE * maxSeconds
             var lastSampleTime = 0L
             var idleLoops = 0
 
             while (!outputDone) {
                 if (isCancelled()) break
-                if (totalOutSamples >= maxSamples) break
-                if (lastSampleTime >= maxUs && maxUs > 0) {
-                    // Force EOS after cap even if decoder keeps going
-                    if (!inputDone) {
-                        val inIndex = c.dequeueInputBuffer(2_000)
-                        if (inIndex >= 0) {
-                            c.queueInputBuffer(inIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
-                            inputDone = true
-                        }
-                    }
-                }
 
                 if (!inputDone) {
                     val inIndex = c.dequeueInputBuffer(5_000)
                     if (inIndex >= 0) {
                         val buffer = c.getInputBuffer(inIndex)!!
                         val sampleSize = extractor.readSampleData(buffer, 0)
-                        if (sampleSize < 0 || (maxUs > 0 && extractor.sampleTime >= maxUs)) {
+                        if (sampleSize < 0) {
                             c.queueInputBuffer(inIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
                             inputDone = true
                         } else {
                             lastSampleTime = extractor.sampleTime.coerceAtLeast(0L)
                             c.queueInputBuffer(inIndex, 0, sampleSize, lastSampleTime, 0)
                             extractor.advance()
-                            val denom = when {
-                                durationUs > 0 -> minOf(durationUs, maxUs).toFloat().coerceAtLeast(1f)
-                                else -> maxUs.toFloat()
+                            if (durationUs > 0) {
+                                onProgress((lastSampleTime / durationUs.toFloat()).coerceIn(0f, 0.99f))
+                            } else {
+                                // Unknown duration: soft progress from elapsed decode time (caps at 0.9)
+                                val soft = (totalOutSamples / (TARGET_SAMPLE_RATE * 600f)).coerceIn(0f, 0.9f)
+                                onProgress(soft)
                             }
-                            onProgress((lastSampleTime / denom).coerceIn(0f, 0.95f))
                         }
                         idleLoops = 0
                     } else {
@@ -119,22 +106,17 @@ object MediaPcmDecoder {
                             outBuf.order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(shorts)
                             val mono = downmixResample(shorts, channelCount, inSampleRate)
                             if (mono.isNotEmpty()) {
-                                val remain = maxSamples - totalOutSamples
-                                val take = minOf(mono.size, remain)
-                                if (take > 0) {
-                                    val bytes = ByteArray(take * 2)
-                                    val bb = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
-                                    for (i in 0 until take) bb.putShort(mono[i])
-                                    onPcmChunk(bytes, bytes.size)
-                                    totalOutSamples += take
-                                }
+                                val bytes = ByteArray(mono.size * 2)
+                                val bb = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+                                for (s in mono) bb.putShort(s)
+                                onPcmChunk(bytes, bytes.size)
+                                totalOutSamples += mono.size
                             }
                         }
                         c.releaseOutputBuffer(outIndex, false)
                         if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
                             outputDone = true
                         }
-                        if (totalOutSamples >= maxSamples) outputDone = true
                     }
                     else -> {
                         idleLoops++
@@ -144,8 +126,10 @@ object MediaPcmDecoder {
                     }
                 }
             }
-            onProgress(1f)
-            if (totalOutSamples == 0) error("هیچ نمونه‌ی صدایی از فایل خوانده نشد")
+            if (!isCancelled()) onProgress(1f)
+            if (totalOutSamples == 0 && !isCancelled()) {
+                error("هیچ نمونه‌ی صدایی از فایل خوانده نشد")
+            }
             return totalOutSamples
         } catch (t: Throwable) {
             Log.e(TAG, "decode failed for $uri", t)
