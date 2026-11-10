@@ -34,6 +34,8 @@ object PlayerHolder {
                 ),
             )
                 .setHandleAudioBecomingNoisy(true)
+                // Keep the processor awake while playing with the screen off (no stutter or gaps).
+                .setWakeMode(androidx.media3.common.C.WAKE_MODE_LOCAL)
                 .setSeekBackIncrementMs(10_000)
                 .setSeekForwardIncrementMs(10_000)
                 .build()

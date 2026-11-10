@@ -174,20 +174,28 @@ class MhjPlaybackService : MediaSessionService() {
         sleepTarget = at
         sleepJob?.cancel()
         if (at <= 0L) return
+        // A timer left over from before (its time has already passed): forget it, don't fade now.
+        if (at <= System.currentTimeMillis()) {
+            serviceScope.launch { settingsStore.clearSleep() }
+            return
+        }
         sleepJob = serviceScope.launch {
             val fadeMs = 8_000L
             val wait = at - System.currentTimeMillis() - fadeMs
             if (wait > 0) delay(wait)
-            // Fade out gently, pause, then put the volume back for next time.
-            val start = exo.volume
-            val steps = 40
-            for (i in 1..steps) {
-                exo.volume = start * (1f - i / steps.toFloat())
-                delay(fadeMs / steps)
+            // Fade out gently, pause, then always put the volume back to full — also when the
+            // timer is changed or cancelled in the middle of the fade.
+            try {
+                val steps = 40
+                for (i in 1..steps) {
+                    exo.volume = 1f - i / steps.toFloat()
+                    delay(fadeMs / steps)
+                }
+                exo.pause()
+                settingsStore.clearSleep()
+            } finally {
+                exo.volume = 1f
             }
-            exo.pause()
-            exo.volume = start
-            settingsStore.clearSleep()
         }
     }
 
