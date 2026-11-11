@@ -583,7 +583,12 @@ private fun PlayerRoot(
                     onDeleteSelectedAsk = { deleteSelectedAsk = true },
                     onOpenFavorites = viewModel::openFavoritesPlaylist,
                     listenPositions = listenPositions,
-                    onPlayFolder = { list, item -> viewModel.playFolder(list, item); topOpen = false },
+                    onPlayFolder = { list, item ->
+                        viewModel.playFolder(list, item)
+                        topOpen = false
+                        val dest = if (item.kind == MediaKind.VIDEO) PAGE_VIDEO else PAGE_MUSIC
+                        scope.launch { pagerState.animateScrollToPage(dest) }
+                    },
                     onBackupSave = { backupSaveLauncher.launch("MHJ-Backup.json") },
                     onBackupRestore = { backupOpenLauncher.launch(arrayOf("application/json", "text/plain", "application/octet-stream", "*/*")) },
                     backupStatus = backupStatus,

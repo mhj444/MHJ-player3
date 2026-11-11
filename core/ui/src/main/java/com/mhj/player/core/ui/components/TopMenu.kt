@@ -244,6 +244,7 @@ fun TopMenuDrawer(
                 onBack = { page = playlistReturn },
                 onPlayAll = { id -> onPlayPlaylist(id) },
                 onPlayItem = onPlayItem,
+                onPlayFrom = onPlayFolder,
                 onRemove = onRemoveFromPlaylist,
                 onReorder = onReorderPlaylist,
                 onShare = onSharePlaylistTrack,
@@ -673,6 +674,7 @@ private fun ColumnScope.PlaylistDetailPage(
     onBack: () -> Unit,
     onPlayAll: (Long) -> Unit,
     onPlayItem: (MediaItemModel) -> Unit,
+    onPlayFrom: (List<MediaItemModel>, MediaItemModel) -> Unit = { _, i -> onPlayItem(i) },
     onRemove: (Long, String) -> Unit,
     onReorder: (Long, List<String>) -> Unit,
     onShare: (MediaItemModel) -> Unit,
@@ -751,7 +753,7 @@ private fun ColumnScope.PlaylistDetailPage(
                     .tapOrHoldDrag(
                         key = item.id,
                         enabled = canReorder,
-                        onTap = { onPlayItem(item) },
+                        onTap = { onPlayFrom(orderedTracks, item) },
                         onHold = {
                             haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
                             draggingId = item.id
