@@ -42,6 +42,8 @@ class PlayerViewModel(
 ) : ViewModel() {
 
     val playerState: StateFlow<PlayerUiState> = playback.state
+    private val _externalOpen = MutableStateFlow<MediaKind?>(null)
+    val externalOpen: StateFlow<MediaKind?> = _externalOpen
     val settings: StateFlow<AppSettings> = settingsStore.settings
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AppSettings())
 
@@ -437,10 +439,15 @@ class PlayerViewModel(
             )
             library.upsertMedia(item)
             library.refreshSmartPlaylists()
+            _externalOpen.value = kind
             playback.awaitConnected()
             playback.play(listOf(item), 0)
             library.recordPlay(item.id)
         }
+    }
+
+    fun consumeExternalOpen() {
+        _externalOpen.value = null
     }
 
     fun createPlaylist(name: String) {
