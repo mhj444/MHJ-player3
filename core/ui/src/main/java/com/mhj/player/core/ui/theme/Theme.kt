@@ -82,6 +82,8 @@ fun MhjPlayerTheme(
     val colors = when (theme) {
         AppTheme.MIDNIGHT_GOLD -> MidnightGoldColors
         AppTheme.PORCELAIN_WHITE -> PorcelainWhiteColors
+        AppTheme.EMERALD_NIGHT -> EmeraldNightColors
+        AppTheme.ROYAL_NAVY -> RoyalNavyColors
     }
 
     val scheme = if (colors.isDark) {

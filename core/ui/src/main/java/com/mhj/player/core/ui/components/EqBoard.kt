@@ -62,7 +62,7 @@ fun EqBoard(
     LaunchedEffect(gains) { if (active < 0) local = gains }
     val cur by rememberUpdatedState(local)
     val send by rememberUpdatedState(onGain)
-    val trackColor = if (c.isDark) Color(0xFF0A0A0B) else Color(0xFFE2D8CA)
+    val trackColor = c.groove
     val max = Eq.MAX_DB
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
@@ -170,7 +170,7 @@ fun GoldSlider(
     val cur by rememberUpdatedState(local)
     val send by rememberUpdatedState(onChange)
     val done by rememberUpdatedState(onRelease)
-    val trackColor = if (c.isDark) Color(0xFF0A0A0B) else Color(0xFFE2D8CA)
+    val trackColor = c.groove
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         Canvas(
             modifier

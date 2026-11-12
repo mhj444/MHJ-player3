@@ -95,8 +95,8 @@ object Emboss {
     fun face(pressed: Boolean = false): Brush {
         val c = MhjTheme.colors
         return if (c.isDark) {
-            if (pressed) Brush.verticalGradient(listOf(Color(0xFF0E0E10), Color(0xFF1A1A1D)))
-            else Brush.verticalGradient(listOf(Color(0xFF26262A), Color(0xFF161618)))
+            if (pressed) Brush.verticalGradient(listOf(c.groove, c.faceBottom))
+            else Brush.verticalGradient(listOf(c.faceTop, c.faceBottom))
         } else {
             if (pressed) Brush.verticalGradient(listOf(Color(0xFFE8DFD3), Color(0xFFF6F0E8)))
             else Brush.verticalGradient(listOf(Color(0xFFFFFDF9), Color(0xFFF0E8DD)))
@@ -197,7 +197,7 @@ fun GoldSwitch(checked: Boolean, onChange: (Boolean) -> Unit, modifier: Modifier
             .clip(RoundedCornerShape(15.dp))
             .background(
                 if (checked) Brush.horizontalGradient(listOf(MhjColors.GoldLo, MhjColors.Gold))
-                else Brush.verticalGradient(listOf(if (c.isDark) Color(0xFF0A0A0B) else Color(0xFFE2D8CA), c.elevated))
+                else Brush.verticalGradient(listOf(c.groove, c.elevated))
             )
             .border(1.dp, Emboss.rim(0.4f), RoundedCornerShape(15.dp))
             .clickable(remember { MutableInteractionSource() }, indication = null) { onChange(!checked) },
@@ -310,7 +310,7 @@ fun DrawnBackground(modifier: Modifier = Modifier, content: @Composable BoxScope
         modifier
             .fillMaxSize()
             .background(
-                if (dark) Brush.verticalGradient(listOf(Color(0xFF141416), Color(0xFF0B0B0C), Color(0xFF060606)))
+                if (dark) MhjTheme.colors.let { Brush.verticalGradient(listOf(it.bgTop, it.bgMid, it.bgBottom)) }
                 else Brush.verticalGradient(listOf(Color(0xFFFBF7F1), Color(0xFFF2EBE1), Color(0xFFE9E0D3)))
             )
             .drawBehind {

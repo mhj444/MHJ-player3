@@ -290,7 +290,7 @@ private fun DrawnCover(playing: Boolean, modifier: Modifier) {
     val angle by turn.animateFloat(0f, 360f, infiniteRepeatable(tween(18_000, easing = LinearEasing)), label = "a")
     Box(
         modifier.background(
-            if (dark) Brush.radialGradient(listOf(Color(0xFF2A2418), Color(0xFF121110), Color(0xFF070707)))
+            if (dark) MhjTheme.colors.let { Brush.radialGradient(listOf(it.faceTop, it.bgMid, it.bgBottom)) }
             else Brush.radialGradient(listOf(Color(0xFFFFF8EC), Color(0xFFF1E6D4), Color(0xFFE4D5BE)))
         ),
         contentAlignment = Alignment.Center,
@@ -511,7 +511,7 @@ private fun SeekBar(positionMs: Long, durationMs: Long, onSeek: (Long) -> Unit, 
     val seek by rememberUpdatedState(onSeek)
     val durNow by rememberUpdatedState(dur)
     // The part not yet played stays visible: a sunken grey groove.
-    val track = if (c.isDark) Color(0xFF2C2C31) else Color(0xFFD9CFC1)
+    val track = c.track
     val shownPos = if (drag != null) (drag!! * dur).toLong() else positionMs.coerceIn(0L, if (dur > 0) dur else Long.MAX_VALUE)
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         Column(Modifier.fillMaxWidth()) {

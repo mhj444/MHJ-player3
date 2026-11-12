@@ -3,6 +3,8 @@ package com.mhj.player.core.model
 enum class AppTheme {
     PORCELAIN_WHITE,
     MIDNIGHT_GOLD,
+    EMERALD_NIGHT,
+    ROYAL_NAVY,
 }
 
 enum class MediaKind {

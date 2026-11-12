@@ -73,7 +73,7 @@ fun ArcDial(
     val change by rememberUpdatedState(onChange)
     val release by rememberUpdatedState(onRelease)
     val labelColor = c.muted.toArgb()
-    val trackColor = if (c.isDark) Color(0xFF0A0A0B) else Color(0xFFE4DACC)
+    val trackColor = c.groove
 
     BoxWithConstraints(modifier.fillMaxWidth().aspectRatio(1f), contentAlignment = Alignment.Center) {
         val side = maxWidth

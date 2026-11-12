@@ -597,6 +597,7 @@ private fun PlayerRoot(
                     onDeleteFolderAsk = { n, f -> folderDeleteAsk = n to f },
                     onRenamePlaylist = viewModel::renamePlaylist,
                     onSetEnglish = { viewModel.setEnglishUi(it) },
+                    onSetTheme = { viewModel.setTheme(it) },
                     onDeletePlaylist = viewModel::deletePlaylist,
                     onReorderPlaylists = viewModel::reorderPlaylists,
                     backEnabled = addToPlaylistAsk == null,

@@ -132,6 +132,7 @@ fun TopMenuDrawer(
     onOpenFavorites: () -> Unit = {},
     onRenamePlaylist: (Long, String) -> Unit = { _, _ -> },
     onSetEnglish: (Boolean) -> Unit = {},
+    onSetTheme: (AppTheme) -> Unit = {},
     listenPositions: Map<String, Long> = emptyMap(),
     onPlayFolder: (List<MediaItemModel>, MediaItemModel) -> Unit = { _, _ -> },
     onBackupSave: () -> Unit = {},
@@ -167,7 +168,7 @@ fun TopMenuDrawer(
     MhjSheet(
         visible = visible,
         fromTop = true,
-        heightFraction = when (page) { TopPage.ROOT -> 0.80f; TopPage.THEME, TopPage.LANGUAGE, TopPage.BACKUP -> 0.56f; else -> 0.92f },
+        heightFraction = when (page) { TopPage.ROOT -> 0.80f; TopPage.THEME -> 0.66f; TopPage.LANGUAGE, TopPage.BACKUP -> 0.56f; else -> 0.92f },
         onDismiss = onDismiss,
         modifier = modifier,
         hazeState = hazeState,
@@ -184,7 +185,7 @@ fun TopMenuDrawer(
                         onOpenFavorites()
                         page = TopPage.PLAYLIST_DETAIL
                     }) { Chevron() }
-                    FeatureRow(Icons.Outlined.Palette, L.t("ظاهر"), if (settings.theme == AppTheme.MIDNIGHT_GOLD) L.t("شب طلایی") else L.t("سفید چینی"), onClick = { page = TopPage.THEME }) { Chevron() }
+                    FeatureRow(Icons.Outlined.Palette, L.t("ظاهر"), L.t(themeChoices.firstOrNull { it.theme == settings.theme }?.name ?: "شب طلایی"), onClick = { page = TopPage.THEME }) { Chevron() }
                     FeatureRow(Icons.Outlined.Translate, L.t("زبان منوها"), if (settings.englishUi) "English" else "فارسی", onClick = { page = TopPage.LANGUAGE }) { Chevron() }
                     FeatureRow(Icons.Outlined.SettingsBackupRestore, L.t("پشتیبان‌گیری"), L.t("انتقال پلی‌لیست‌ها به گوشی دیگر"), onClick = { page = TopPage.BACKUP }) { Chevron() }
                 }
@@ -268,24 +269,17 @@ fun TopMenuDrawer(
             TopPage.LANGUAGE -> {
                 SheetTitle(L.t("زبان منوها"), "Menu language", { page = TopPage.ROOT })
                 Spacer(Modifier.height(8.dp))
-                Column(Modifier.padding(horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    FeatureRow(Icons.Outlined.Translate, "فارسی", "منوها به فارسی، راست‌به‌چپ", onClick = { if (settings.englishUi) onSetEnglish(false) }) {
-                        GoldSwitch(!settings.englishUi, onChange = { if (settings.englishUi) onSetEnglish(false) })
-                    }
-                    FeatureRow(Icons.Outlined.Translate, "English", "English menus, left-to-right", onClick = { if (!settings.englishUi) onSetEnglish(true) }) {
-                        GoldSwitch(settings.englishUi, onChange = { if (!settings.englishUi) onSetEnglish(true) })
-                    }
+                Column(Modifier.padding(horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ChoiceCard("فارسی", "منوها به فارسی، راست‌به‌چپ", !settings.englishUi, null) { if (settings.englishUi) onSetEnglish(false) }
+                    ChoiceCard("English", "English menus, left-to-right", settings.englishUi, null) { if (!settings.englishUi) onSetEnglish(true) }
                 }
             }
             TopPage.THEME -> {
                 SheetTitle(L.t("ظاهر"), L.t("رنگ‌بندی برنامه"), { page = TopPage.ROOT })
                 Spacer(Modifier.height(8.dp))
-                Column(Modifier.padding(horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    FeatureRow(Icons.Outlined.DarkMode, L.t("شب طلایی"), L.t("زمینهٔ تیره با طلایی"), onClick = { if (settings.theme != AppTheme.MIDNIGHT_GOLD) onToggleTheme() }) {
-                        GoldSwitch(settings.theme == AppTheme.MIDNIGHT_GOLD, onChange = { if (settings.theme != AppTheme.MIDNIGHT_GOLD) onToggleTheme() })
-                    }
-                    FeatureRow(Icons.Outlined.LightMode, L.t("سفید چینی"), L.t("زمینهٔ روشن کرم با طلایی"), onClick = { if (settings.theme != AppTheme.PORCELAIN_WHITE) onToggleTheme() }) {
-                        GoldSwitch(settings.theme == AppTheme.PORCELAIN_WHITE, onChange = { if (settings.theme != AppTheme.PORCELAIN_WHITE) onToggleTheme() })
+                Column(Modifier.padding(horizontal = 4.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    themeChoices.forEach { t ->
+                        ChoiceCard(L.t(t.name), L.t(t.sub), settings.theme == t.theme, t.swatch) { onSetTheme(t.theme) }
                     }
                 }
             }
@@ -815,6 +809,51 @@ private fun ColumnScope.PlaylistDetailPage(
 fun artistLabel(a: String?): String {
     val t = a?.trim().orEmpty()
     return if (t.isEmpty() || t.equals("<unknown>", true) || t.equals("unknown artist", true) || t.equals("unknown", true)) L.t("خوانندهٔ نامشخص") else t
+}
+
+private class ThemeChoice(val theme: AppTheme, val name: String, val sub: String, val swatch: List<Color>)
+
+private val themeChoices = listOf(
+    ThemeChoice(AppTheme.MIDNIGHT_GOLD, "شب طلایی", "زمینهٔ تیره با طلایی", listOf(Color(0xFF151517), Color(0xFFC9A96A))),
+    ThemeChoice(AppTheme.PORCELAIN_WHITE, "سفید چینی", "زمینهٔ روشن کرم با طلایی", listOf(Color(0xFFF4EDE3), Color(0xFFC9A96A))),
+    ThemeChoice(AppTheme.EMERALD_NIGHT, "زمرد شب", "سبز تیره با طلایی", listOf(Color(0xFF0E2219), Color(0xFFC9A96A))),
+    ThemeChoice(AppTheme.ROYAL_NAVY, "سرمه‌ای سلطنتی", "سرمه‌ای عمیق با طلایی", listOf(Color(0xFF121C3A), Color(0xFFCDB27C))),
+)
+
+/** One choice of a group: only the chosen card turns gold, with a tick. */
+@Composable
+private fun ChoiceCard(title: String, subtitle: String, selected: Boolean, swatch: List<Color>?, onClick: () -> Unit) {
+    val c = MhjTheme.colors
+    RaisedCard(
+        Modifier.fillMaxWidth(),
+        radius = 20.dp, depth = if (selected) 2.dp else 6.dp, padding = 14.dp, rimAlpha = if (selected) 1f else 0.35f, onClick = onClick,
+    ) {
+        Row(
+            Modifier.fillMaxWidth()
+                .then(if (selected) Modifier.background(MhjColors.Gold.copy(alpha = 0.08f), RoundedCornerShape(12.dp)) else Modifier),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                Modifier.size(24.dp).clip(CircleShape)
+                    .background(if (selected) MhjColors.Gold else Color.Transparent)
+                    .border(2.dp, MhjColors.Gold, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) { if (selected) Icon(Icons.Outlined.Check, null, tint = Color(0xFF111111), modifier = Modifier.size(16.dp)) }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, color = if (selected) (if (c.isDark) MhjColors.GoldHi else MhjColors.GoldLo) else c.onBackground,
+                    fontSize = 15.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold)
+                Text(subtitle, color = c.muted, fontSize = 12.sp)
+            }
+            if (swatch != null) {
+                Box(
+                    Modifier.size(34.dp).clip(CircleShape)
+                        .background(androidx.compose.ui.graphics.Brush.linearGradient(swatch))
+                        .border(1.5.dp, MhjColors.Gold.copy(alpha = 0.7f), CircleShape),
+                )
+            }
+        }
+    }
 }
 
 /** Bar shown while several files are ticked: share, playlist, move, delete, all, close. */

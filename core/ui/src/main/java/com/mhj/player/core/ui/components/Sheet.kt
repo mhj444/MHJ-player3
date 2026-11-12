@@ -58,8 +58,8 @@ fun MhjSheet(
     val shape = if (fromTop) RoundedCornerShape(bottomStart = r, bottomEnd = r) else RoundedCornerShape(topStart = r, topEnd = r)
     val style = if (c.isDark) {
         HazeStyle(
-            backgroundColor = Color(0xFF0E0E10),
-            tints = listOf(HazeTint(Color(0xC2131315)), HazeTint(MhjColors.Gold.copy(alpha = 0.03f))),
+            backgroundColor = c.sheet,
+            tints = listOf(HazeTint(c.sheet.copy(alpha = 0.76f)), HazeTint(MhjColors.Gold.copy(alpha = 0.03f))),
             blurRadius = 26.dp,
             noiseFactor = 0.05f,
         )
@@ -89,7 +89,7 @@ fun MhjSheet(
                     .align(if (fromTop) Alignment.TopCenter else Alignment.BottomCenter)
                     .fillMaxWidth()
                     .fillMaxHeight(heightFraction)
-                    .raised(r, 10.dp, if (c.isDark) Color(0xFF121214) else Color(0xFFF7F1E9), Emboss.light, Emboss.dark)
+                    .raised(r, 10.dp, c.sheet, Emboss.light, Emboss.dark)
                     .clip(shape)
                     .then(if (hazeState != null) Modifier.hazeEffect(state = hazeState, style = style) else Modifier.background(style.backgroundColor))
                     .border(1.dp, Emboss.rim(0.6f), shape)

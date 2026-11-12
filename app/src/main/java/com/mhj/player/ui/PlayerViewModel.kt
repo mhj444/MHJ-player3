@@ -254,6 +254,8 @@ class PlayerViewModel(
 
     fun setKeepNaturalPitch(on: Boolean) = viewModelScope.launch { settingsStore.setKeepNaturalPitch(on) }
 
+    fun setTheme(theme: AppTheme) = viewModelScope.launch { settingsStore.setTheme(theme) }
+
     fun setEnglishUi(on: Boolean) = viewModelScope.launch { settingsStore.update { it.copy(englishUi = on) } }
 
     fun toggleShowRemaining() = viewModelScope.launch { settingsStore.update { it.copy(showRemaining = !it.showRemaining) } }
@@ -276,8 +278,8 @@ class PlayerViewModel(
     fun toggleTheme() {
         viewModelScope.launch {
             val next = when (settings.value.theme) {
-                AppTheme.MIDNIGHT_GOLD -> AppTheme.PORCELAIN_WHITE
                 AppTheme.PORCELAIN_WHITE -> AppTheme.MIDNIGHT_GOLD
+                else -> AppTheme.PORCELAIN_WHITE
             }
             settingsStore.setTheme(next)
         }

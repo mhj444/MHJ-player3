@@ -57,6 +57,15 @@ data class MhjThemeColors(
     val darkShadow: Color,
     val glow: Color,
     val isDark: Boolean,
+    // Drawn surfaces (page, raised faces, panels, sunken tracks).
+    val bgTop: Color = Color(0xFF141416),
+    val bgMid: Color = Color(0xFF0B0B0C),
+    val bgBottom: Color = Color(0xFF060606),
+    val faceTop: Color = Color(0xFF26262A),
+    val faceBottom: Color = Color(0xFF161618),
+    val sheet: Color = Color(0xFF0E0E10),
+    val track: Color = Color(0xFF2C2C31),
+    val groove: Color = Color(0xFF0A0A0B),
 )
 
 val MidnightGoldColors = MhjThemeColors(
@@ -79,6 +88,42 @@ val MidnightGoldColors = MhjThemeColors(
     isDark = true,
 )
 
+/** Deep emerald green with gold. */
+val EmeraldNightColors = MidnightGoldColors.copy(
+    background = Color(0xFF06100C),
+    surface = Color(0xFF0C1C16),
+    elevated = Color(0xFF13281F),
+    recess = Color(0xFF05100B),
+    glass = Color(0xCC0E1F18),
+    muted = Color(0xFFB9A97C),
+    bgTop = Color(0xFF0E2219),
+    bgMid = Color(0xFF08160F),
+    bgBottom = Color(0xFF040B08),
+    faceTop = Color(0xFF1A3328),
+    faceBottom = Color(0xFF0E2019),
+    sheet = Color(0xFF0A1913),
+    track = Color(0xFF1C352B),
+    groove = Color(0xFF04100A),
+)
+
+/** Royal navy blue with champagne gold. */
+val RoyalNavyColors = MidnightGoldColors.copy(
+    background = Color(0xFF070B18),
+    surface = Color(0xFF0E1530),
+    elevated = Color(0xFF16203F),
+    recess = Color(0xFF060A16),
+    glass = Color(0xCC111A36),
+    muted = Color(0xFFBCAE88),
+    bgTop = Color(0xFF121C3A),
+    bgMid = Color(0xFF0A1124),
+    bgBottom = Color(0xFF050814),
+    faceTop = Color(0xFF1E2A50),
+    faceBottom = Color(0xFF121A36),
+    sheet = Color(0xFF0C132B),
+    track = Color(0xFF223058),
+    groove = Color(0xFF050916),
+)
+
 val PorcelainWhiteColors = MhjThemeColors(
     background = MhjColors.PorcBg,
     surface = MhjColors.PorcSurface,
@@ -97,4 +142,12 @@ val PorcelainWhiteColors = MhjThemeColors(
     darkShadow = MhjColors.PorcDark,
     glow = MhjColors.Gold.copy(alpha = 0.22f),
     isDark = false,
+    bgTop = Color(0xFFFBF7F1),
+    bgMid = Color(0xFFF2EBE1),
+    bgBottom = Color(0xFFE9E0D3),
+    faceTop = Color(0xFFFFFDF9),
+    faceBottom = Color(0xFFF0E8DD),
+    sheet = Color(0xFFF4EEE6),
+    track = Color(0xFFD9CFC1),
+    groove = Color(0xFFE2D8CA),
 )
