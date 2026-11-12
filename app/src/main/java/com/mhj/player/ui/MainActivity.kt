@@ -182,6 +182,53 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        openIncoming(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        openIncoming(intent)
+    }
+
+    /** Telegram "Open with" sends a temporary content:// URI, not a saved file. */
+    private fun openIncoming(incoming: Intent?) {
+        if (incoming == null) return
+        val action = incoming.action ?: return
+        if (action != Intent.ACTION_VIEW && action != Intent.ACTION_SEND) return
+        val uri = incoming.data ?: streamExtra(incoming) ?: return
+        val mime = incoming.type ?: contentResolver.getType(uri)
+        val name = runCatching {
+            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            }
+        }.getOrNull()
+        val kind = when {
+            mime?.startsWith("audio/") == true -> MediaKind.MUSIC
+            mime?.startsWith("video/") == true -> MediaKind.VIDEO
+            name.isAudioName() -> MediaKind.MUSIC
+            else -> MediaKind.VIDEO
+        }
+        runCatching {
+            contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        viewModel.importAndPlayUri(uri, kind, name)
+        incoming.action = null
+    }
+
+    private fun streamExtra(incoming: Intent): Uri? {
+        val extra = if (Build.VERSION.SDK_INT >= 33) {
+            incoming.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            incoming.getParcelableExtra(Intent.EXTRA_STREAM)
+        }
+        return extra ?: incoming.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri
+    }
+
+    private fun String?.isAudioName(): Boolean {
+        val n = this?.lowercase().orEmpty()
+        return listOf(".mp3", ".m4a", ".aac", ".flac", ".wav", ".ogg", ".opus").any { n.endsWith(it) }
     }
 
     private fun hasMediaPermission(): Boolean {
@@ -235,6 +282,13 @@ private fun PlayerRoot(
     val landscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     val pagerState = rememberPagerState(initialPage = PAGE_MUSIC, pageCount = { 2 })
+    val externalOpen by viewModel.externalOpen.collectAsStateWithLifecycle()
+    LaunchedEffect(externalOpen) {
+        val kind = externalOpen ?: return@LaunchedEffect
+        val dest = if (kind == MediaKind.VIDEO) PAGE_VIDEO else PAGE_MUSIC
+        pagerState.scrollToPage(dest)
+        viewModel.consumeExternalOpen()
+    }
     val scope = rememberCoroutineScope()
     var topOpen by remember { mutableStateOf(false) }
     var bottomOpen by remember { mutableStateOf(false) }
