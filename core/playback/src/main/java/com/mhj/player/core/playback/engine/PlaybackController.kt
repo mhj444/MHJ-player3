@@ -143,49 +143,78 @@ class PlaybackController(
         controller?.seekTo(positionMs)
     }
 
-    /** Live picture while the time bar is dragged. Seeks the player directly so commands don't pile up. */
+    /**
+     * Picture follows the time bar. A new seek wipes the frame that is still being drawn,
+     * so only one seek runs at a time, then the player jumps to where the finger is now.
+     */
     private val scrubHandler = Handler(Looper.getMainLooper())
-    private var scrubLatest: Long? = null
-    private var scrubBusy = false
+    private var scrubTarget = -1L
+    private var scrubAwaiting = false
     private var scrubWasPlaying = false
     private var scrubActive = false
+    private var frameListener: Player.Listener? = null
+    private val scrubGiveUp = Runnable { finishScrubStep() }
 
     fun scrubStart() {
         if (scrubActive) return
+        val exo = PlayerHolder.playerOrNull() ?: return
         scrubActive = true
-        val exo = PlayerHolder.playerOrNull()
-        scrubWasPlaying = exo?.isPlaying == true
-        exo?.setSeekParameters(SeekParameters.CLOSEST_SYNC)
-        if (exo?.isPlaying == true) exo.pause()
+        scrubWasPlaying = exo.isPlaying
+        if (exo.isPlaying) exo.pause()
+        // Within a fifth of a second of the finger. A nearer keyframe is used when there is one.
+        exo.setSeekParameters(SeekParameters(200_000L, 200_000L))
     }
 
     fun scrubTo(positionMs: Long) {
         if (!scrubActive) scrubStart()
-        scrubLatest = positionMs.coerceAtLeast(0L)
-        if (scrubBusy) return
-        flushScrub()
+        scrubTarget = positionMs.coerceAtLeast(0L)
+        if (!scrubAwaiting) issueScrub()
     }
 
-    private fun flushScrub() {
-        val ms = scrubLatest ?: return
-        scrubLatest = null
-        val exo = PlayerHolder.playerOrNull()
-        if (exo == null) {
-            controller?.seekTo(ms)
-            return
+    private fun issueScrub() {
+        if (scrubAwaiting || !scrubActive) return
+        val exo = PlayerHolder.playerOrNull() ?: return
+        val target = scrubTarget
+        if (target < 0L || kotlin.math.abs(exo.currentPosition - target) < 180L) return
+        scrubAwaiting = true
+        var sawSeek = false
+        val listener = object : Player.Listener {
+            override fun onPositionDiscontinuity(
+                oldPosition: Player.PositionInfo,
+                newPosition: Player.PositionInfo,
+                reason: Int,
+            ) {
+                if (reason == Player.DISCONTINUITY_REASON_SEEK) sawSeek = true
+            }
+
+            override fun onRenderedFirstFrame() {
+                if (!sawSeek || frameListener !== this) return
+                scrubHandler.post {
+                    if (frameListener === listener) finishScrubStep()
+                }
+            }
         }
-        scrubBusy = true
-        exo.seekTo(ms)
-        scrubHandler.postDelayed({
-            scrubBusy = false
-            if (scrubLatest != null) flushScrub()
-        }, 48)
+        frameListener = listener
+        exo.addListener(listener)
+        exo.seekTo(target)
+        scrubHandler.postDelayed(scrubGiveUp, 140)
+    }
+
+    private fun finishScrubStep() {
+        scrubHandler.removeCallbacks(scrubGiveUp)
+        frameListener?.let { PlayerHolder.playerOrNull()?.removeListener(it) }
+        frameListener = null
+        scrubAwaiting = false
+        if (scrubActive) issueScrub()
     }
 
     fun scrubEnd(positionMs: Long) {
+        scrubActive = false
+        scrubTarget = -1L
         scrubHandler.removeCallbacksAndMessages(null)
-        scrubLatest = null
-        scrubBusy = false
+        frameListener?.let { PlayerHolder.playerOrNull()?.removeListener(it) }
+        frameListener = null
+        scrubAwaiting = false
         val exo = PlayerHolder.playerOrNull()
         val target = positionMs.coerceAtLeast(0L)
         if (exo != null) {
@@ -193,15 +222,13 @@ class PlaybackController(
             exo.seekTo(target)
             if (scrubWasPlaying) exo.play()
             scrubHandler.postDelayed({
-                if (scrubActive) return@postDelayed
-                PlayerHolder.playerOrNull()?.setSeekParameters(SeekParameters.DEFAULT)
-            }, 600)
+                if (!scrubActive) PlayerHolder.playerOrNull()?.setSeekParameters(SeekParameters.DEFAULT)
+            }, 500)
         } else {
             controller?.seekTo(target)
             if (scrubWasPlaying) controller?.play()
         }
         scrubWasPlaying = false
-        scrubActive = false
     }
 
     fun seekBy(deltaMs: Long) {
