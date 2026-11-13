@@ -507,6 +507,9 @@ private fun PlayerRoot(
             onPlayPause = viewModel::togglePlayPause,
             onSeek = viewModel::seekTo,
             onSeekBy = viewModel::seekBy,
+            onScrubStart = viewModel::scrubStart,
+            onScrub = viewModel::scrubTo,
+            onScrubEnd = viewModel::scrubEnd,
             onPickVideo = {},
             inPip = true,
         )
@@ -549,6 +552,9 @@ private fun PlayerRoot(
                         onPlayPause = viewModel::togglePlayPause,
                         onSeek = viewModel::seekTo,
                         onSeekBy = viewModel::seekBy,
+                        onScrubStart = viewModel::scrubStart,
+                        onScrub = viewModel::scrubTo,
+                        onScrubEnd = viewModel::scrubEnd,
                         onPickVideo = {
                             pickVideoLauncher.launch(arrayOf("video/*"))
                         },

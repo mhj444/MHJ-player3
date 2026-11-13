@@ -97,6 +97,9 @@ fun VideoPlayerScreen(
     onPlayPause: () -> Unit,
     onSeek: (Long) -> Unit,
     onSeekBy: (Long) -> Unit,
+    onScrubStart: () -> Unit = {},
+    onScrub: (Long) -> Unit = {},
+    onScrubEnd: (Long) -> Unit = {},
     onPickVideo: () -> Unit,
     modifier: Modifier = Modifier,
     inPip: Boolean = false,
@@ -148,8 +151,7 @@ fun VideoPlayerScreen(
 
     val playing = state.isPlaying
     var seekDrag by remember { mutableStateOf<Float?>(null) }
-    var scrubWasPlaying by remember { mutableStateOf(false) }
-    var lastScrubAt by remember { mutableLongStateOf(0L) }
+    var scrubbing by remember { mutableStateOf(false) }
     val bumpHide = rememberUpdatedState {
         hideGeneration += 1
         chromeVisible = true
@@ -459,30 +461,20 @@ fun VideoPlayerScreen(
                             onValueChange = { frac ->
                                 bumpHide.value.invoke()
                                 seekDrag = frac
-                                val p = player ?: return@Slider
-                                if (lastScrubAt == 0L) {
-                                    scrubWasPlaying = p.isPlaying
-                                    if (p.isPlaying) p.pause()
+                                if (duration <= 0) return@Slider
+                                if (!scrubbing) {
+                                    scrubbing = true
+                                    onScrubStart()
                                 }
-                                if (duration > 0) {
-                                    val now = android.os.SystemClock.uptimeMillis()
-                                    if (now - lastScrubAt >= 70L) {
-                                        lastScrubAt = now
-                                        p.seekTo((frac * duration).toLong().coerceIn(0L, duration))
-                                    }
-                                }
+                                onScrub((frac * duration).toLong().coerceIn(0L, duration))
                             },
                             onValueChangeFinished = {
                                 val frac = seekDrag
                                 if (frac != null && duration > 0) {
-                                    val target = (frac * duration).toLong().coerceIn(0L, duration)
-                                    player?.seekTo(target)
-                                    onSeek(target)
-                                    if (scrubWasPlaying) player?.play()
+                                    onScrubEnd((frac * duration).toLong().coerceIn(0L, duration))
                                 }
                                 seekDrag = null
-                                scrubWasPlaying = false
-                                lastScrubAt = 0L
+                                scrubbing = false
                             },
                             colors = SliderDefaults.colors(
                                 thumbColor = MhjColors.GoldHi,
@@ -527,6 +519,7 @@ private fun VideoChip(onClick: () -> Unit, content: @Composable () -> Unit) {
         contentAlignment = Alignment.Center,
     ) { content() }
 }
+
 
 
 /** Subtitle choices: the video's own subtitle tracks, a file from the phone, or off. */

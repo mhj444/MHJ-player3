@@ -4,11 +4,14 @@ import com.mhj.player.core.model.L
 
 import android.content.ComponentName
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
@@ -138,6 +141,67 @@ class PlaybackController(
 
     fun seekTo(positionMs: Long) {
         controller?.seekTo(positionMs)
+    }
+
+    /** Live picture while the time bar is dragged. Seeks the player directly so commands don't pile up. */
+    private val scrubHandler = Handler(Looper.getMainLooper())
+    private var scrubLatest: Long? = null
+    private var scrubBusy = false
+    private var scrubWasPlaying = false
+    private var scrubActive = false
+
+    fun scrubStart() {
+        if (scrubActive) return
+        scrubActive = true
+        val exo = PlayerHolder.playerOrNull()
+        scrubWasPlaying = exo?.isPlaying == true
+        exo?.setSeekParameters(SeekParameters.CLOSEST_SYNC)
+        if (exo?.isPlaying == true) exo.pause()
+    }
+
+    fun scrubTo(positionMs: Long) {
+        if (!scrubActive) scrubStart()
+        scrubLatest = positionMs.coerceAtLeast(0L)
+        if (scrubBusy) return
+        flushScrub()
+    }
+
+    private fun flushScrub() {
+        val ms = scrubLatest ?: return
+        scrubLatest = null
+        val exo = PlayerHolder.playerOrNull()
+        if (exo == null) {
+            controller?.seekTo(ms)
+            return
+        }
+        scrubBusy = true
+        exo.seekTo(ms)
+        scrubHandler.postDelayed({
+            scrubBusy = false
+            if (scrubLatest != null) flushScrub()
+        }, 48)
+    }
+
+    fun scrubEnd(positionMs: Long) {
+        scrubHandler.removeCallbacksAndMessages(null)
+        scrubLatest = null
+        scrubBusy = false
+        val exo = PlayerHolder.playerOrNull()
+        val target = positionMs.coerceAtLeast(0L)
+        if (exo != null) {
+            exo.setSeekParameters(SeekParameters.EXACT)
+            exo.seekTo(target)
+            if (scrubWasPlaying) exo.play()
+            scrubHandler.postDelayed({
+                if (scrubActive) return@postDelayed
+                PlayerHolder.playerOrNull()?.setSeekParameters(SeekParameters.DEFAULT)
+            }, 600)
+        } else {
+            controller?.seekTo(target)
+            if (scrubWasPlaying) controller?.play()
+        }
+        scrubWasPlaying = false
+        scrubActive = false
     }
 
     fun seekBy(deltaMs: Long) {

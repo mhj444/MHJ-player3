@@ -222,6 +222,9 @@ class PlayerViewModel(
 
     fun togglePlayPause() = playback.togglePlayPause()
     fun seekTo(ms: Long) = playback.seekTo(ms)
+    fun scrubStart() = playback.scrubStart()
+    fun scrubTo(ms: Long) = playback.scrubTo(ms)
+    fun scrubEnd(ms: Long) = playback.scrubEnd(ms)
     fun seekBy(ms: Long) = playback.seekBy(ms)
     fun next() = playback.skipNext()
     fun previous() = playback.skipPrevious()
