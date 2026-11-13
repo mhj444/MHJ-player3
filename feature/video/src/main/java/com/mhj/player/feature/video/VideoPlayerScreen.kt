@@ -55,6 +55,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -84,6 +85,7 @@ import com.mhj.player.core.ui.theme.MhjTheme
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 
 private enum class GestureHud { None, Seek, Volume, Brightness }
 
@@ -216,10 +218,13 @@ fun VideoPlayerScreen(
         showHud(GestureHud.Seek, (if (seekAccumMs >= 0) L.pick("جلو ", "Forward ") else L.pick("عقب ", "Back ")) + Fa.time(kotlin.math.abs(seekAccumMs)))
     }
 
-    LaunchedEffect(hud) {
-        if (hud == GestureHud.None) return@LaunchedEffect
-        delay(900)
-        hud = GestureHud.None
+    LaunchedEffect(Unit) {
+        snapshotFlow { hud to hudLabel }
+            .collectLatest { (kind, _) ->
+                if (kind == GestureHud.None) return@collectLatest
+                delay(900)
+                hud = GestureHud.None
+            }
     }
 
     // Video controls always run left-to-right (back on the left, forward on the right).

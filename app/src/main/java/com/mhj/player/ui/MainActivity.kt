@@ -56,6 +56,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mhj.player.MhjApp
 import com.mhj.player.core.model.MediaItemModel
@@ -305,6 +307,17 @@ private fun PlayerRoot(
     }
     val videoActive by remember {
         derivedStateOf { pagerState.currentPage == PAGE_VIDEO }
+    }
+    SideEffect {
+        val activity = context as? android.app.Activity ?: return@SideEffect
+        val controller = WindowCompat.getInsetsController(activity.window, activity.window.decorView)
+        val immersive = videoActive && !inPip && playerState.current?.kind == MediaKind.VIDEO
+        if (immersive) {
+            controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+        } else {
+            controller.show(WindowInsetsCompat.Type.systemBars())
+        }
     }
     // Landscape video owns horizontal drag for seek — do not swipe back to music
     val lockPagerForVideoGestures = videoActive && landscape
