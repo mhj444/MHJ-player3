@@ -144,13 +144,18 @@ class PlaybackController(
     }
 
     /**
-     * Picture follows the time bar. A new seek wipes the frame that is still being drawn,
-     * so only one seek runs at a time, then the player jumps to where the finger is now.
+     * Video time bar. Media3 1.5 has no scrubbing mode, so one seek runs at a time
+     * and the next starts only after that frame is drawn — a new seek wipes it.
+     * A slow drag uses a one-frame window, so the picture steps through frames.
+     * A fast drag keeps only the latest finger position (nothing is queued) and the
+     * next seek goes there, so the positions in between cannot pile up and stall.
+     * Lifting the finger seeks that exact spot and, if it was playing, starts again.
      */
     private val scrubHandler = Handler(Looper.getMainLooper())
     private var scrubTarget = -1L
+    private var scrubIssued = -1L
     private var scrubAwaiting = false
-    private var scrubWasPlaying = false
+    private var scrubResume = false
     private var scrubActive = false
     private var frameListener: Player.Listener? = null
     private val scrubGiveUp = Runnable { finishScrubStep() }
@@ -159,23 +164,30 @@ class PlaybackController(
         if (scrubActive) return
         val exo = PlayerHolder.playerOrNull() ?: return
         scrubActive = true
-        scrubWasPlaying = exo.isPlaying
-        if (exo.isPlaying) exo.pause()
-        // Within a fifth of a second of the finger. A nearer keyframe is used when there is one.
-        exo.setSeekParameters(SeekParameters(200_000L, 200_000L))
+        // playWhenReady, not isPlaying: a buffer hitch must not leave playback stopped.
+        scrubResume = exo.playWhenReady
+        scrubIssued = -1L
+        if (exo.playWhenReady) exo.pause()
     }
 
     fun scrubTo(positionMs: Long) {
         if (!scrubActive) scrubStart()
         scrubTarget = positionMs.coerceAtLeast(0L)
-        if (!scrubAwaiting) issueScrub()
+        if (scrubAwaiting) return
+        issueScrub()
     }
 
     private fun issueScrub() {
         if (scrubAwaiting || !scrubActive) return
         val exo = PlayerHolder.playerOrNull() ?: return
         val target = scrubTarget
-        if (target < 0L || kotlin.math.abs(exo.currentPosition - target) < 180L) return
+        if (target < 0L) return
+        val here = exo.currentPosition
+        val gap = kotlin.math.abs(here - target)
+        if (gap < STEP_MS) return
+        if (scrubIssued >= 0L && kotlin.math.abs(target - scrubIssued) < STEP_MS) return
+        exo.setSeekParameters(SeekParameters(FRAME_US, FRAME_US))
+        scrubIssued = target
         scrubAwaiting = true
         var sawSeek = false
         val listener = object : Player.Listener {
@@ -197,10 +209,12 @@ class PlaybackController(
         frameListener = listener
         exo.addListener(listener)
         exo.seekTo(target)
-        scrubHandler.postDelayed(scrubGiveUp, 140)
+        // A one-frame decode needs time. The old 140ms cutoff wiped the frame.
+        scrubHandler.postDelayed(scrubGiveUp, 900L)
     }
 
     private fun finishScrubStep() {
+        if (!scrubAwaiting) return
         scrubHandler.removeCallbacks(scrubGiveUp)
         frameListener?.let { PlayerHolder.playerOrNull()?.removeListener(it) }
         frameListener = null
@@ -209,8 +223,11 @@ class PlaybackController(
     }
 
     fun scrubEnd(positionMs: Long) {
+        val resume = scrubResume
         scrubActive = false
         scrubTarget = -1L
+        scrubIssued = -1L
+        scrubResume = false
         scrubHandler.removeCallbacksAndMessages(null)
         frameListener?.let { PlayerHolder.playerOrNull()?.removeListener(it) }
         frameListener = null
@@ -220,15 +237,14 @@ class PlaybackController(
         if (exo != null) {
             exo.setSeekParameters(SeekParameters.EXACT)
             exo.seekTo(target)
-            if (scrubWasPlaying) exo.play()
+            if (resume) exo.play()
             scrubHandler.postDelayed({
                 if (!scrubActive) PlayerHolder.playerOrNull()?.setSeekParameters(SeekParameters.DEFAULT)
             }, 500)
         } else {
             controller?.seekTo(target)
-            if (scrubWasPlaying) controller?.play()
+            if (resume) controller?.play()
         }
-        scrubWasPlaying = false
     }
 
     fun seekBy(deltaMs: Long) {
@@ -326,6 +342,17 @@ class PlaybackController(
 
     fun release() {
         positionJob?.cancel()
+        scrubHandler.removeCallbacksAndMessages(null)
+        frameListener?.let { PlayerHolder.playerOrNull()?.removeListener(it) }
+        frameListener = null
+        if (scrubActive) {
+            val exo = PlayerHolder.playerOrNull()
+            exo?.setSeekParameters(SeekParameters.DEFAULT)
+            if (scrubResume) exo?.play()
+        }
+        scrubActive = false
+        scrubAwaiting = false
+        scrubResume = false
         controller?.removeListener(listener)
         controllerFuture?.let { MediaController.releaseFuture(it) }
         controller = null
@@ -414,6 +441,12 @@ class PlaybackController(
 
     companion object {
         private const val TAG = "Playback"
+
+        /** One frame at 30fps. A slow drag seeks inside this window. */
+        private const val FRAME_US = 33_000L
+
+        /** Ignore motion smaller than this so the same frame is not sought again. */
+        private const val STEP_MS = 20L
     }
 
     private fun formatMs(ms: Long): String {
