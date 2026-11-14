@@ -144,12 +144,11 @@ class PlaybackController(
     }
 
     /**
-     * Video time bar. Media3 1.5 has no scrubbing mode, so one seek runs at a time
-     * and the next starts only after that frame is drawn — a new seek wipes it.
-     * A slow drag uses a one-frame window, so the picture steps through frames.
-     * A fast drag keeps only the latest finger position (nothing is queued) and the
-     * next seek goes there, so the positions in between cannot pile up and stall.
-     * Lifting the finger seeks that exact spot and, if it was playing, starts again.
+     * Video time bar. Keep only the newest finger position so rapid drags never
+     * build a queue of obsolete seeks. A seek-discontinuity callback releases the
+     * next update after a short decode window; the timeout is only a safety net
+     * for sources that do not report the discontinuity promptly.
+     * Lifting the finger performs one exact seek and restores the previous play state.
      */
     private val scrubHandler = Handler(Looper.getMainLooper())
     private var scrubTarget = -1L
@@ -159,6 +158,7 @@ class PlaybackController(
     private var scrubActive = false
     private var frameListener: Player.Listener? = null
     private val scrubGiveUp = Runnable { finishScrubStep() }
+    private val scrubStepDone = Runnable { finishScrubStep() }
 
     fun scrubStart() {
         if (scrubActive) return
@@ -189,33 +189,33 @@ class PlaybackController(
         exo.setSeekParameters(SeekParameters(FRAME_US, FRAME_US))
         scrubIssued = target
         scrubAwaiting = true
-        var sawSeek = false
         val listener = object : Player.Listener {
             override fun onPositionDiscontinuity(
                 oldPosition: Player.PositionInfo,
                 newPosition: Player.PositionInfo,
                 reason: Int,
             ) {
-                if (reason == Player.DISCONTINUITY_REASON_SEEK) sawSeek = true
-            }
-
-            override fun onRenderedFirstFrame() {
-                if (!sawSeek || frameListener !== this) return
-                scrubHandler.post {
-                    if (frameListener === listener) finishScrubStep()
-                }
+                if (reason != Player.DISCONTINUITY_REASON_SEEK || frameListener !== this) return
+                // Do not wait for onRenderedFirstFrame: Media3 reports that event
+                // for the first frame after a surface/renderer reset, not each seek.
+                // A short decode window gives the preview time to update while
+                // allowing the latest finger position to be processed frequently.
+                scrubHandler.removeCallbacks(scrubGiveUp)
+                scrubHandler.removeCallbacks(scrubStepDone)
+                scrubHandler.postDelayed(scrubStepDone, SCRUB_STEP_DELAY_MS)
             }
         }
         frameListener = listener
         exo.addListener(listener)
         exo.seekTo(target)
-        // A one-frame decode needs time. The old 140ms cutoff wiped the frame.
-        scrubHandler.postDelayed(scrubGiveUp, 900L)
+        // Safety net for unusual sources that delay or omit seek discontinuities.
+        scrubHandler.postDelayed(scrubGiveUp, SCRUB_TIMEOUT_MS)
     }
 
     private fun finishScrubStep() {
         if (!scrubAwaiting) return
         scrubHandler.removeCallbacks(scrubGiveUp)
+        scrubHandler.removeCallbacks(scrubStepDone)
         frameListener?.let { PlayerHolder.playerOrNull()?.removeListener(it) }
         frameListener = null
         scrubAwaiting = false
@@ -444,6 +444,12 @@ class PlaybackController(
 
         /** One frame at 30fps. A slow drag seeks inside this window. */
         private const val FRAME_US = 33_000L
+
+        /** Minimum pause between preview seeks, allowing a frame to decode without stalling the drag. */
+        private const val SCRUB_STEP_DELAY_MS = 50L
+
+        /** Fallback timeout if a source does not emit a seek discontinuity. */
+        private const val SCRUB_TIMEOUT_MS = 350L
 
         /** Ignore motion smaller than this so the same frame is not sought again. */
         private const val STEP_MS = 20L
